@@ -1,0 +1,16 @@
+{
+  // Wrangler 配置 https://developers.cloudflare.com/workers/wrangler/configuration/
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // 项目名称，部署到 Cloudflare Pages 后即为 <name>.pages.dev
+  "name": "lolgame",
+
+  // 纯静态站点，无需 compat flags，保持最新即可
+  "compatibility_date": "2026-09-26",
+
+  // Pages 静态资源目录：assets/ 下的 index.html / index.css / index.js 会被原样上传
+  "pages_build_output_dir": "assets",
+
+  // 找不到路由时回退到 index.html（单页应用友好）
+  "not_found_handling": "single-page-application"
+}

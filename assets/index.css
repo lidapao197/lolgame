@@ -140,15 +140,6 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
   overflow: hidden;
 }
 
-.legend {
-  flex: none; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  padding: 12px 18px; border-bottom: 1px solid var(--line);
-  font-size: 12px; color: var(--muted);
-}
-.legend .lg { display: inline-flex; align-items: center; gap: 6px; }
-.legend i { width: 8px; height: 8px; border-radius: 3px; }
-.legend .sp { margin-left: auto; color: var(--faint); }
-
 .weekdays {
   flex: none; display: grid; grid-template-columns: repeat(7, 1fr);
   border-bottom: 1px solid var(--line);
@@ -187,7 +178,7 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 
 .day .head { display: flex; align-items: center; }
 .num {
-  font-size: 15px; font-weight: 600; letter-spacing: -.01em;
+  font-size: 12px; font-weight: 600; letter-spacing: -.01em;
   font-variant-numeric: tabular-nums; line-height: 1;
 }
 .day.we .num { color: var(--muted); }
@@ -202,21 +193,47 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 
 .day.sel { box-shadow: inset 0 0 0 2px var(--accent); border-radius: 6px; z-index: 2; }
 
-.items { display: flex; flex-direction: column; gap: 5px; overflow: hidden; }
+.items { display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+/* 四列网格：时间 | 主队 | 比分 | 客队，纵向逐列对齐 */
 .chip {
-  display: flex; align-items: center; gap: 7px;
-  padding: 4px 8px; border-radius: 8px;
-  font-size: 12px; font-weight: 500; line-height: 1.3;
-  background: var(--chipbg); color: var(--chipfg);
+  display: grid; align-items: center;
+  grid-template-columns: 36px minmax(0, 1fr) 42px minmax(0, 1fr);
+  gap: 8px;
+  padding: 5px 9px; border-radius: 9px;
+  font-size: 12px; font-weight: 600; line-height: 1.3;
+  background: var(--accent-soft); color: var(--accent);
   white-space: nowrap; overflow: hidden;
 }
-.chip i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
-.chip b { font-weight: 700; font-variant-numeric: tabular-nums; opacity: .85; font-size: 11px; }
-.chip span { overflow: hidden; text-overflow: ellipsis; }
-.more { font-size: 11px; font-weight: 600; color: var(--faint); padding-left: 6px; }
+.chip b { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 12px; opacity: .8; }
+.chip .ta, .chip .tb { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip .sc { text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
+.chip .sc.vs { font-weight: 700; opacity: .7; }
+/* LPL 淡红，LCK 靛蓝 */
+.chip.lpl { color: #dc2626; background: #fef2f2; }
+.chip.lck { color: var(--accent); background: var(--accent-soft); }
+/* 未展示完的比赛数：右上角白底灰字 + 黄边框角标 */
+.more {
+  position: absolute; top: 7px; right: 9px;
+  min-width: 26px; height: 20px; padding: 0 7px;
+  display: inline-grid; place-items: center;
+  border-radius: 999px;
+  background: var(--surface); color: var(--muted);
+  border: 1px solid #f0b429;
+  font-size: 11px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: .01em;
+  box-shadow: 0 1px 2px rgba(20, 22, 29, .05), 0 6px 14px -12px rgba(20, 22, 29, .5);
+  transition: color .18s var(--ease), border-color .18s var(--ease), background .18s var(--ease);
+}
+.day:hover .more { color: var(--text); border-color: #f59e0b; background: #fffbeb; }
+[data-theme="dark"] .more { background: var(--cell); box-shadow: none; }
+[data-theme="dark"] .day:hover .more { background: var(--hover); }
+/* [hidden] 的 UA 样式会被上面的 display 覆盖，需显式兜底 */
+.more[hidden], .chip[hidden] { display: none; }
 
-[data-theme="dark"] .chip { background: color-mix(in srgb, var(--chipfg) 16%, transparent); color: var(--chipfg); }
-[data-theme="dark"] .card-evt .tagx { background: color-mix(in srgb, var(--c) 20%, transparent); color: var(--c); }
+[data-theme="dark"] .chip { color: #a5b4fc; background: rgba(99, 102, 241, .16); }
+[data-theme="dark"] .chip.lpl { color: #fca5a5; background: rgba(239, 68, 68, .16); }
+[data-theme="dark"] .chip.lck { color: #a5b4fc; background: rgba(99, 102, 241, .16); }
+
 
 /* ---------- 详情抽屉 ---------- */
 .scrim {
@@ -228,7 +245,7 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 50;
-  width: 380px; max-width: 92vw;
+  width: 430px; max-width: 92vw;
   background: var(--surface); border-left: 1px solid var(--line);
   box-shadow: var(--shadow-lg);
   transform: translateX(102%); transition: transform .42s var(--ease);
@@ -237,7 +254,7 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 .drawer.show { transform: translateX(0); }
 
 .drawer .top {
-  flex: none; padding: 22px 22px 16px; border-bottom: 1px solid var(--line);
+  flex: none; padding: 15px 15px 15px; border-bottom: 1px solid var(--line);
   display: flex; align-items: flex-start; gap: 12px;
 }
 .drawer .top .d1 { font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
@@ -251,38 +268,77 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 .x:hover { background: var(--hover); color: var(--text); }
 .x svg { width: 14px; height: 14px; }
 
-.sum {
-  flex: none; display: flex; gap: 10px; padding: 14px 22px; border-bottom: 1px solid var(--line);
+/* 内容仍可滚动（滚轮/触控），但不显示滚动条 */
+.dlist {
+  flex: 1; overflow: auto; padding: 15px 15px 15px;
+  display: flex; flex-direction: column; gap: 10px;
+  scrollbar-width: none; -ms-overflow-style: none;
 }
-.sum div {
-  flex: 1; text-align: center; padding: 10px 8px; border-radius: 12px; background: var(--hover);
-}
-.sum b {
-  display: block; font-size: 19px; font-weight: 700; letter-spacing: -.02em;
-  background: linear-gradient(100deg, var(--accent), #a855f7 60%, #ec4899);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.sum span { font-size: 11px; color: var(--muted); }
-
-.dlist { flex: 1; overflow: auto; padding: 16px 22px 22px; display: flex; flex-direction: column; gap: 10px; }
+.dlist::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 .card-evt {
-  display: flex; gap: 12px; padding: 12px 14px;
-  border: 1px solid var(--line); border-radius: 13px; background: var(--cell);
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 14px 16px 18px;
+  border: 1px solid var(--line); border-radius: 16px; background: var(--cell);
   animation: fade .3s var(--ease) backwards;
 }
-.card-evt .bar { width: 3px; border-radius: 3px; flex: none; background: var(--c); }
-.card-evt .bd { flex: 1; min-width: 0; }
-.card-evt .t { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
-.card-evt .m { margin-top: 5px; font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.card-evt .tagx {
-  padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700;
-  color: var(--c); background: var(--cbg);
+.card-evt .tags {
+  align-self: flex-start;
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  font-size: 13px; color: var(--muted);
 }
-.card-evt .when { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+.card-evt .tagx,
+.card-evt .st,
+.card-evt .ts {
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  color: var(--accent); background: var(--accent-soft);
+}
+/* 时间胶囊为重点，稍重 */
+.card-evt .ts { font-weight: 800; font-variant-numeric: tabular-nums; }
+/* 赛制/阶段/类型/地点用中性胶囊，避让重点 */
+.card-evt .tagx { color: var(--muted); background: var(--hover); font-weight: 600; }
+.card-evt .teams { display: flex; align-items: center; gap: 12px; }
+.card-evt .team { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.card-evt .tlogo {
+  width: 62px; height: 62px; object-fit: contain;
+  border-radius: 14px; background: var(--hover);
+}
+.card-evt .team span {
+  font-size: 18px; font-weight: 800; letter-spacing: -.02em;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.card-evt .mid { flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.card-evt .sc { font-size: 27px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.card-evt .vs { font-size: 17px; font-weight: 800; color: var(--faint); letter-spacing: .04em; }
 
+[data-theme="dark"] .card-evt .st,
+[data-theme="dark"] .card-evt .ts { color: #a5b4fc; background: rgba(99, 102, 241, .16); }
 .empty { text-align: center; padding: 40px 10px; color: var(--faint); font-size: 13px; line-height: 1.8; }
 .empty .em { font-size: 34px; display: block; margin-bottom: 10px; opacity: .65; }
+
+/* ---------- 数据加载提示 ---------- */
+.toasts {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 90;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  pointer-events: none;
+}
+.toast {
+  display: flex; align-items: center; gap: 10px;
+  max-width: 340px; padding: 11px 14px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); color: var(--text);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px; font-weight: 600; line-height: 1.4;
+  animation: toast-in .28s var(--ease) backwards;
+  transition: opacity .25s var(--ease), transform .25s var(--ease);
+}
+.toast .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.toast.ok { border-color: color-mix(in srgb, #10b981 38%, transparent); }
+.toast.ok .dot { background: #10b981; box-shadow: 0 0 0 4px rgba(16, 185, 129, .16); }
+.toast.err { border-color: color-mix(in srgb, #f43f5e 38%, transparent); }
+.toast.err .dot { background: #f43f5e; box-shadow: 0 0 0 4px rgba(244, 63, 94, .16); }
+.toast.out { opacity: 0; transform: translateY(-8px); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-12px) scale(.98); } }
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 900px), (max-height: 620px) {
@@ -293,7 +349,7 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
   .chip { font-size: 0; padding: 3px 6px; gap: 0; }
   .chip i { width: 7px; height: 7px; }
   .chip b, .chip span { display: none; }
-  .more { display: none; }
+  .more { top: 5px; right: 6px; min-width: 20px; height: 17px; padding: 0 6px; font-size: 10px; }
   .drawer { top: auto; left: 0; width: auto; max-width: none; height: 78dvh; border-left: 0; border-top: 1px solid var(--line); border-radius: 20px 20px 0 0; transform: translateY(102%); }
   .drawer.show { transform: translateY(0); }
 }
