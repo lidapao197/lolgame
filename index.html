@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LOL赛事日历</title>
+<link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="title" id="title">LOL赛事日历<span class="yr" id="year"></span></div>
+      <div class="sub" id="sub">—</div>
+    </div>
+    <div class="tools">
+      <div class="navgroup">
+        <button class="pill icon ghost" id="prev" title="上一月 (←)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button class="monthbtn" id="monthBtn" title="选择月份">
+          <span id="monthBtnText">—</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <button class="pill icon ghost" id="next" title="下一月 (→)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+
+        <div class="mpick" id="mpick">
+          <div class="mpick-year">
+            <button class="pill icon ghost" id="yPrev" title="上一年">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <span id="pickYear">—</span>
+            <button class="pill icon ghost" id="yNext" title="下一年">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+          <div class="mpick-grid" id="pickGrid"></div>
+          <button class="mpick-foot" id="pickToday">回到本月</button>
+        </div>
+      </div>
+
+      <button class="pill" id="today">今天</button>
+      <button class="pill icon ghost" id="theme" title="切换深浅色">
+        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="board">
+    <div class="legend" id="legend"></div>
+    <div class="weekdays" id="weekdays"></div>
+    <div class="days" id="days"></div>
+  </section>
+
+  <div class="foot">
+    作者：<span id="author">xxx</span><i>|</i>来源：<span id="source">xxx</span>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="日程详情">
+  <div class="top">
+    <div>
+      <div class="d1" id="dTitle">—</div>
+      <div class="d2" id="dMeta">—</div>
+    </div>
+    <button class="x" id="close" title="关闭 (Esc)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="sum">
+    <div><b id="sCount">0</b><span>当日赛程</span></div>
+    <div><b id="sHours">0h</b><span>总时长</span></div>
+    <div><b id="sFree">0</b><span>空闲时段</span></div>
+  </div>
+  <div class="dlist" id="dlist"></div>
+</aside>
+
+<script src="index.js"></script>
+</body>
+</html>
