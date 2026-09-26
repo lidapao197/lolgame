@@ -13,10 +13,15 @@
   /* 战队列表（含 TeamLogo），用于按 TeamId 取战队图标 */
   const TEAM_API = "https://lpl.qq.com/web201612/data/LOL_MATCH2_TEAM_LIST.js";
 
-  /* 接口无 CORS 头，浏览器直连会被拦截，故准备公共代理作为降级方案 */
+  /* 接口无 CORS 头，浏览器直连会被拦截。
+     首选同源代理 /api（由 worker.js / functions/api.js 提供，线上部署必备），
+     再退到公共代理，最后才直连（本地 file:// 打开时只有公共代理可用） */
+  const API_PROXY = "/api?u=";
   const proxyUrls = (url) => [
+    API_PROXY + encodeURIComponent(url),
     "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
-    "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(url)
+    "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(url),
+    url
   ];
 
   /* ---------- 偏好（默认周一起始） ---------- */
@@ -86,8 +91,11 @@
 
   /* 依次尝试直连 / 公共代理，返回原始文本 */
   async function getRaw(url) {
-    for (const u of [url].concat(proxyUrls(url))) {
-      try { return await httpGet(u); } catch (e) { /* 尝试下一个 */ }
+    for (const u of proxyUrls(url)) {
+      let raw = null;
+      try { raw = await httpGet(u); } catch (e) { /* 尝试下一个 */ }
+      /* 代理不可用时常返回 404 页面 / index.html，按首字符排除 HTML */
+      if (raw && raw.charCodeAt(0) !== 60 && !/^<!DOCTYPE|^<html/i.test(raw)) return raw;
     }
     return null;
   }
@@ -126,23 +134,75 @@
     return u.indexOf("//") === 0 ? "https:" + u : u;
   }
 
-  /* ---------- 赛事选项框 ---------- */
+  /* ---------- 赛事下拉：自定义按钮 + 弹出面板，常驻显示 ---------- */
+  const gsel = { root: $("#gsel"), btn: $("#gselBtn"), txt: $("#gselTxt"), menu: $("#gselMenu") };
+
+  /* 状态占位：loading / fail / empty —— 按钮显示文案并禁止展开 */
+  function setGameSelState(text, kind) {
+    gsel.txt.textContent = text;
+    gsel.root.dataset.state = kind || "loading";
+    gsel.btn.disabled = true;
+    gsel.menu.hidden = true;
+    gsel.root.classList.remove("open");
+    gsel.btn.setAttribute("aria-expanded", "false");
+  }
+
+  /* 高亮当前赛事并同步按钮文案 */
+  function markGameSel(id) {
+    const cur = games.find((g) => String(g.sGameId) === String(id));
+    const name = (cur && cur.sGameName) || "LPL";
+    gsel.txt.textContent = name;
+    source.name = name;
+    gsel.menu.querySelectorAll(".gsel-item").forEach((b) => {
+      b.classList.toggle("on", b.dataset.id === String(id));
+    });
+  }
+
   function renderGameSel() {
-    const el = $("#gameSel");
-    el.innerHTML = games.map((g) =>
-      '<option value="' + esc(g.sGameId) + '">' + esc(g.sGameName || g.sGameId) + "</option>"
+    gsel.menu.innerHTML = games.map((g) =>
+      '<button type="button" class="gsel-item" role="option" data-id="' + esc(g.sGameId) + '">' +
+      "<i></i><span>" + esc(g.sGameName || g.sGameId) + "</span></button>"
     ).join("");
+    gsel.btn.disabled = false;
+    gsel.root.dataset.state = "ready";
     const saved = String(pref.game || "");
     curGameId = games.some((g) => String(g.sGameId) === saved) ? saved : String(games[0].sGameId);
-    el.value = curGameId;
-    el.hidden = false;
-    const cur = games.find((g) => String(g.sGameId) === curGameId);
-    source.name = (cur && cur.sGameName) || "LPL";
+    markGameSel(curGameId);
   }
+
+  function toggleGameSel(open) {
+    if (gsel.btn.disabled) return;
+    const on = open === undefined ? gsel.menu.hidden : !!open;
+    gsel.menu.hidden = !on;
+    gsel.root.classList.toggle("open", on);
+    gsel.btn.setAttribute("aria-expanded", String(on));
+    if (on) {
+      const cur = gsel.menu.querySelector(".gsel-item.on");
+      if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  gsel.btn.addEventListener("click", (e) => { e.stopPropagation(); toggleGameSel(); });
+  gsel.menu.addEventListener("click", (e) => {
+    const it = e.target.closest(".gsel-item");
+    if (!it) return;
+    toggleGameSel(false);
+    const id = String(it.dataset.id);
+    if (id === String(curGameId)) return;
+    curGameId = id; pref.game = id; save();
+    markGameSel(id);
+    loadMatches(id);
+  });
+  document.addEventListener("click", (e) => { if (!gsel.root.contains(e.target)) toggleGameSel(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") toggleGameSel(false); });
 
   /* ---------- 取赛事列表，填选项框，再加载选中赛事的对阵 ---------- */
   async function loadGames() {
-    const fail = (why) => { source.state = "fail"; renderHeader(); toast("LPL 赛事获取失败：" + why, "err"); };
+    setGameSelState("正在请求数据…", "loading");
+    const fail = (why) => {
+      source.state = "fail"; renderHeader(); setGameSelState("赛事请求失败", "fail");
+      toast("LPL 赛事获取失败：" + why, "err");
+    };
 
     const raw = await getRaw(GAME_API);
     if (!raw) { fail("赛事列表接口无响应"); return; }
@@ -152,7 +212,11 @@
     catch (e) { fail("赛事列表解析出错"); return; }
 
     const all = (data.gameList || []).filter((g) => g && g.sGameId);
-    if (!all.length) { fail("未取到赛事列表"); return; }
+    if (!all.length) {
+      source.state = "fail"; renderHeader(); setGameSelState("赛事为空", "empty");
+      toast("LPL 赛事获取失败：赛事列表为空", "err");
+      return;
+    }
 
     /* 只保留赛程区间与今年有交集的赛事 */
     const y = String(t0.getFullYear());
@@ -208,6 +272,15 @@
     source.state = "ready";
     source.n = list.length;
     applyMatches();
+
+    if (!list.length) {
+      /* 该赛事没有对阵：保留赛事列表可切换，仅把按钮文案标成「赛事为空」 */
+      gsel.txt.textContent = "赛事为空";
+      gsel.root.dataset.state = "empty";
+      toast("该赛事暂无对阵", "err");
+      return;
+    }
+    gsel.root.dataset.state = "ready";
     toast("LPL 赛事获取成功：" + list.length + " 场", "ok");
   }
 
@@ -456,20 +529,12 @@
     fitTimer = setTimeout(fitCells, 120);
   });
 
-  /* 切换赛事：重新拉取该赛事的对阵 */
-  $("#gameSel").addEventListener("change", (e) => {
-    curGameId = String(e.target.value);
-    const cur = games.find((g) => String(g.sGameId) === curGameId);
-    source.name = (cur && cur.sGameName) || "LPL";
-    pref.game = curGameId; save();
-    loadMatches(curGameId);
-  });
-
   /* ---------- 初始化 ---------- */
   applyTheme(); renderWeekdays(); render();
+  setGameSelState("正在请求数据…", "loading");
   /* 兜底：加载函数内未捕获的异常也给出失败提示 */
   loadGames().catch((e) => {
-    source.state = "fail"; renderHeader();
+    source.state = "fail"; renderHeader(); setGameSelState("赛事请求失败", "fail");
     toast("LPL 赛事获取失败：" + ((e && e.message) || "未知错误"), "err");
   });
 })();

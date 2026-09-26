@@ -15,7 +15,14 @@
       <div class="sub" id="sub">—</div>
     </div>
     <div class="tools">
-      <select id="gameSel" class="gamesel" title="选择赛事" hidden></select>
+      <div class="gsel" id="gsel" data-state="loading">
+        <button class="gsel-btn" id="gselBtn" type="button" aria-haspopup="listbox" aria-expanded="false" title="选择赛事">
+          <span class="gsel-dot"></span>
+          <span class="gsel-txt" id="gselTxt">正在请求数据…</span>
+          <svg class="gsel-arw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="gsel-menu" id="gselMenu" role="listbox" hidden></div>
+      </div>
 
       <div class="navgroup">
         <button class="pill icon ghost" id="prev" title="上一月 (←)">

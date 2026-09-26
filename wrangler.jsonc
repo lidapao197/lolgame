@@ -1,0 +1,15 @@
+{
+  // Worker 名字，决定默认的 *.workers.dev 子域名
+  "name": "lolgame",
+  // Worker 入口：/api 走代理，其余回落到静态资源
+  "main": "worker.js",
+  "compatibility_date": "2025-06-01",
+  // 站点目录：只上传 public/ 下的文件，worker.js 等后端文件不会被当成静态资源
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
