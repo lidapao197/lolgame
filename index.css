@@ -84,6 +84,19 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 .pill.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .pill.ghost { background: transparent; }
 
+/* 赛事选项框 */
+.gamesel {
+  height: 36px; max-width: 200px; padding: 0 30px 0 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat; background-position: right 10px center; background-size: 13px;
+  transition: background-color .2s var(--ease), border-color .2s var(--ease);
+}
+.gamesel:hover { background-color: var(--hover); border-color: var(--faint); }
+[data-theme="dark"] .gamesel { color-scheme: dark; }
+
 .navgroup { position: relative; display: flex; align-items: center; gap: 6px; }
 
 .monthbtn {
@@ -208,9 +221,8 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 .chip .ta, .chip .tb { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip .sc { text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
 .chip .sc.vs { font-weight: 700; opacity: .7; }
-/* LPL 淡红，LCK 靛蓝 */
+/* LPL 淡红 */
 .chip.lpl { color: #dc2626; background: #fef2f2; }
-.chip.lck { color: var(--accent); background: var(--accent-soft); }
 /* 未展示完的比赛数：右上角白底灰字 + 黄边框角标 */
 .more {
   position: absolute; top: 7px; right: 9px;
@@ -232,7 +244,6 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 
 [data-theme="dark"] .chip { color: #a5b4fc; background: rgba(99, 102, 241, .16); }
 [data-theme="dark"] .chip.lpl { color: #fca5a5; background: rgba(239, 68, 68, .16); }
-[data-theme="dark"] .chip.lck { color: #a5b4fc; background: rgba(99, 102, 241, .16); }
 
 
 /* ---------- 详情抽屉 ---------- */

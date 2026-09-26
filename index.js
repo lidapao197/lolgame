@@ -13,17 +13,6 @@
   /* 战队列表（含 TeamLogo），用于按 TeamId 取战队图标 */
   const TEAM_API = "https://lpl.qq.com/web201612/data/LOL_MATCH2_TEAM_LIST.js";
 
-  /* PandaScore 数据源（serie_id=10419 → LCK 2026） */
-  const PS_TOKEN = "UfjEdq5SZxthRjK16twzR_Vbtyrb7kUBkheEyN1mG2NmCkTSO3w";
-  const PS_SERIE = 10419;
-  const PS_PER_PAGE = 100;
-  const PS_MAX_PAGES = 5;
-  const PS_LABEL = "LCK 2026 · PandaScore";
-  const psApi = (page) =>
-    "https://api.pandascore.co/matches?filter[serie_id]=" + PS_SERIE +
-    "&page=" + page + "&size=" + PS_PER_PAGE + "&per_page=" + PS_PER_PAGE +
-    "&token=" + PS_TOKEN;
-
   /* 接口无 CORS 头，浏览器直连会被拦截，故准备公共代理作为降级方案 */
   const proxyUrls = (url) => [
     "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
@@ -44,28 +33,19 @@
   let view = { y: t0.getFullYear(), m: t0.getMonth() };
   let sel = todayKey;
 
-  /* 两个数据源（并行加载）、各自的数据桶、合并后的日程、战队表 */
-  const SRC_ORDER = ["lpl", "lck"];
-  const sources = {
-    lpl: { name: "LPL", state: "loading", n: 0 },
-    lck: { name: "LCK", state: "loading", n: 0 }
-  };
-  let buckets = { lpl: {}, lck: {} };
+  /* 单一数据源（LPL）：赛事列表、当前选中的 sGameId、按日期索引的对阵、战队表 */
+  let games = [];
+  let curGameId = "";
+  let source = { name: "LPL", state: "loading", n: 0 };
+  let bucket = {};
   let matches = {};
   let teams = {};
   let teamsTask = null;
 
-  /* 把两个数据源的数据按日期合并，并统一按时间排序 */
-  function mergeMatches() {
-    const merged = {};
-    SRC_ORDER.forEach((key) => {
-      const days = buckets[key] || {};
-      Object.keys(days).forEach((day) => {
-        merged[day] = (merged[day] || []).concat(days[day]);
-      });
-    });
-    Object.keys(merged).forEach((day) => merged[day].sort((a, b) => a.time.localeCompare(b.time)));
-    matches = merged;
+  /* 按日期排序后交给日历渲染 */
+  function applyMatches() {
+    Object.keys(bucket).forEach((day) => bucket[day].sort((a, b) => a.time.localeCompare(b.time)));
+    matches = bucket;
     render();
   }
 
@@ -132,33 +112,37 @@
     } catch (e) { /* 忽略解析失败，降级为纯文字 */ }
   }
   function teamOf(id) { return teams[String(id)] || null; }
-  /* 只有 LPL 才查腾讯战队表。LCK(PandaScore) 的队伍 id 会与 LPL TeamId 撞号
-     （例：KT 的 PandaScore id=63，LPL 63 号是「长沙理工」），
-     所以 LCK 一律用数据自带的队名与图标 */
-  function useTeamTable(m) { return m.src !== "lck"; }
+  /* 队名：优先用腾讯战队表的简称，取不到就用对阵自带的名称 */
   function nameOf(m, side) {
     const fallback = (side === "a" ? m.na : m.nb) || "待定";
-    if (!useTeamTable(m)) return fallback;
     const t = teamOf(side === "a" ? m.aid : m.bid);
     return (t && (t.TeamShortName || t.TeamName)) || fallback;
   }
-  /* 优先用对阵自带的图标（PandaScore 提供明/暗两套），否则回落到腾讯战队表 */
+  /* 队徽：按 TeamId 从战队表取 */
   function teamLogo(m, side) {
-    const d = side === "a" ? m.da : m.db;
-    const l = side === "a" ? m.la : m.lb;
-    const own = (pref.theme === "dark" && d) || l;
-    if (own) return own;
-    if (!useTeamTable(m)) return "";
     const t = teamOf(side === "a" ? m.aid : m.bid);
     if (!t) return "";
     const u = t.TeamLogo || t.TeamLogoDeep || "";
     return u.indexOf("//") === 0 ? "https:" + u : u;
   }
 
-  /* ---------- LPL：先取赛事列表，用第一个赛事的 sGameId 再取对阵 ---------- */
-  async function loadLPL() {
-    const src = sources.lpl;
-    const fail = (why) => { src.state = "fail"; renderHeader(); toast("LPL 赛事获取失败：" + why, "err"); };
+  /* ---------- 赛事选项框 ---------- */
+  function renderGameSel() {
+    const el = $("#gameSel");
+    el.innerHTML = games.map((g) =>
+      '<option value="' + esc(g.sGameId) + '">' + esc(g.sGameName || g.sGameId) + "</option>"
+    ).join("");
+    const saved = String(pref.game || "");
+    curGameId = games.some((g) => String(g.sGameId) === saved) ? saved : String(games[0].sGameId);
+    el.value = curGameId;
+    el.hidden = false;
+    const cur = games.find((g) => String(g.sGameId) === curGameId);
+    source.name = (cur && cur.sGameName) || "LPL";
+  }
+
+  /* ---------- 取赛事列表，填选项框，再加载选中赛事的对阵 ---------- */
+  async function loadGames() {
+    const fail = (why) => { source.state = "fail"; renderHeader(); toast("LPL 赛事获取失败：" + why, "err"); };
 
     const raw = await getRaw(GAME_API);
     if (!raw) { fail("赛事列表接口无响应"); return; }
@@ -167,19 +151,37 @@
     try { data = JSON.parse(raw); }
     catch (e) { fail("赛事列表解析出错"); return; }
 
-    const first = (data.gameList || [])[0];
-    if (!first || !first.sGameId) { fail("未取到赛事 ID"); return; }
+    const all = (data.gameList || []).filter((g) => g && g.sGameId);
+    if (!all.length) { fail("未取到赛事列表"); return; }
 
-    src.name = first.sGameName || "LPL";
+    /* 只保留赛程区间与今年有交集的赛事 */
+    const y = String(t0.getFullYear());
+    const inYear = all.filter((g) => {
+      const sy = String(g.sDate || "").slice(0, 4);
+      const ey = String(g.eDate || "").slice(0, 4);
+      return (!sy || sy <= y) && (!ey || ey >= y);
+    });
+    games = inYear.length ? inYear : all;
+
+    if (!games.length) { fail("未取到赛事列表"); return; }
+
+    renderGameSel();
+    renderHeader();
+    await loadMatches(curGameId);
+  }
+
+  /* ---------- 加载某个赛事的对阵 ---------- */
+  async function loadMatches(sGameId) {
+    source.state = "loading";
     renderHeader();
 
-    const results = await Promise.all([getRaw(matchApi(first.sGameId)), ensureTeams()]);
-    const raw2 = results[0];
-    if (!raw2) { fail("对阵列表接口无响应"); return; }
+    const results = await Promise.all([getRaw(matchApi(sGameId)), ensureTeams()]);
+    const raw = results[0];
+    if (!raw) { source.state = "fail"; renderHeader(); toast("LPL 对阵获取失败：接口无响应", "err"); return; }
 
     let list;
-    try { list = (JSON.parse(raw2).msg) || []; }
-    catch (e) { fail("对阵列表解析出错"); return; }
+    try { list = (JSON.parse(raw).msg) || []; }
+    catch (e) { source.state = "fail"; renderHeader(); toast("LPL 对阵获取失败：数据解析出错", "err"); return; }
 
     const next = {};
     list.forEach((m) => {
@@ -193,7 +195,6 @@
         time: md.slice(11, 16),
         aid: String(m.TeamA || ""), bid: String(m.TeamB || ""),
         na: m.TeamShortNameA || "", nb: m.TeamShortNameB || "",
-        la: "", lb: "", da: "", db: "",
         sa: m.ScoreA, sb: m.ScoreB,
         mode: m.GameModeName || "",
         stage: m.GameProcName || "",
@@ -202,95 +203,12 @@
         status: String(m.MatchStatus || "")
       });
     });
-    Object.keys(next).forEach((k) => next[k].sort((a, b) => a.time.localeCompare(b.time)));
 
-    buckets.lpl = next;
-    src.state = "ready";
-    src.n = list.length;
-    mergeMatches();
+    bucket = next;
+    source.state = "ready";
+    source.n = list.length;
+    applyMatches();
     toast("LPL 赛事获取成功：" + list.length + " 场", "ok");
-  }
-
-  /* ---------- PandaScore：按页拉取对阵并归入日程 ---------- */
-  /* ISO(UTC) → 本地日期键与 HH:MM */
-  function isoLocal(iso) {
-    const d = new Date(iso);
-    return {
-      k: d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()),
-      t: pad(d.getHours()) + ":" + pad(d.getMinutes()),
-      d: d
-    };
-  }
-
-  const PS_STATUS = { finished: "3", running: "1" };
-
-  function psItem(m, p) {
-    const ops = Array.isArray(m.opponents) ? m.opponents : [];
-    const oa = (ops[0] && ops[0].opponent) || null;
-    const ob = (ops[1] && ops[1].opponent) || null;
-    const results = Array.isArray(m.results) ? m.results : [];
-    const scoreOf = (t) => {
-      if (!t) return "";
-      const r = results.find((x) => x.team_id === t.id);
-      return r && r.score !== null && r.score !== undefined ? String(r.score) : "";
-    };
-    const st = PS_STATUS[m.status] || "0";
-    const sa = st === "3" ? scoreOf(oa) : "";
-    const sb = st === "3" ? scoreOf(ob) : "";
-
-    return {
-      src: "lck",
-      time: p.t,
-      aid: oa ? String(oa.id) : "", bid: ob ? String(ob.id) : "",
-      na: (oa && (oa.acronym || oa.name)) || "待定",
-      nb: (ob && (ob.acronym || ob.name)) || "待定",
-      la: (oa && oa.image_url) || "", lb: (ob && ob.image_url) || "",
-      da: (oa && oa.dark_mode_image_url) || "", db: (ob && ob.dark_mode_image_url) || "",
-      sa: sa, sb: sb,
-      lg: (m.league && m.league.name) || "LCK",
-      mode: m.match_type === "best_of" && m.number_of_games ? "BO" + m.number_of_games : (m.match_type || ""),
-      stage: (m.tournament && m.tournament.name) || "",
-      type: (m.serie && m.serie.full_name) || "",
-      place: "",
-      status: st
-    };
-  }
-
-  async function loadLCK() {
-    const src = sources.lck;
-    const fail = (why) => { src.state = "fail"; renderHeader(); toast("LCK 赛事获取失败：" + why, "err"); };
-
-    let all = [];
-    for (let page = 1; page <= PS_MAX_PAGES; page++) {
-      const raw = await getRaw(psApi(page));
-      if (!raw) break;
-      let arr;
-      try { arr = JSON.parse(raw); } catch (e) { break; }
-      if (!Array.isArray(arr) || !arr.length) break;
-      all = all.concat(arr);
-      if (arr.length < PS_PER_PAGE) break;
-    }
-
-    if (!all.length) { fail("PandaScore 接口无数据或被限流"); return; }
-
-    const next = {};
-    all.forEach((m) => {
-      const iso = m.scheduled_at || m.begin_at;
-      if (!iso) return;
-      const p = isoLocal(iso);
-      (next[p.k] = next[p.k] || []).push(psItem(m, p));
-    });
-    Object.keys(next).forEach((k) => next[k].sort((a, b) => a.time.localeCompare(b.time)));
-
-    const s = all[0] && all[0].serie;
-    const lg = all[0] && all[0].league;
-    src.name = ((lg && lg.name) || PS_LABEL) + " " + (s && s.full_name ? s.full_name : "");
-
-    buckets.lck = next;
-    src.state = "ready";
-    src.n = all.length;
-    mergeMatches();
-    toast("LCK 赛事获取成功：" + all.length + " 场", "ok");
   }
 
   function statusText(s) {
@@ -348,12 +266,9 @@
 
   function renderHeader() {
     $("#monthBtnText").textContent = view.y + " 年 " + (view.m + 1) + " 月";
-    $("#sub").textContent = SRC_ORDER.map((key) => {
-      const s = sources[key];
-      const tail = s.state === "ready" ? s.n + " 场"
-        : s.state === "fail" ? "加载失败" : "加载中…";
-      return s.name + " " + tail;
-    }).join("　｜　");
+    const tail = source.state === "ready" ? source.n + " 场"
+      : source.state === "fail" ? "加载失败" : "加载中…";
+    $("#sub").textContent = source.name + "　" + tail;
   }
 
   /* 每个日期格可见行数上限，以及最多渲染的 chip 节点数 */
@@ -541,13 +456,20 @@
     fitTimer = setTimeout(fitCells, 120);
   });
 
-  /* ---------- 初始化：LPL 与 LCK 赛程并行加载 ---------- */
+  /* 切换赛事：重新拉取该赛事的对阵 */
+  $("#gameSel").addEventListener("change", (e) => {
+    curGameId = String(e.target.value);
+    const cur = games.find((g) => String(g.sGameId) === curGameId);
+    source.name = (cur && cur.sGameName) || "LPL";
+    pref.game = curGameId; save();
+    loadMatches(curGameId);
+  });
+
+  /* ---------- 初始化 ---------- */
   applyTheme(); renderWeekdays(); render();
   /* 兜底：加载函数内未捕获的异常也给出失败提示 */
-  const safeRun = (p, label, src) => p.catch((e) => {
-    src.state = "fail"; renderHeader();
-    toast(label + " 赛事获取失败：" + ((e && e.message) || "未知错误"), "err");
+  loadGames().catch((e) => {
+    source.state = "fail"; renderHeader();
+    toast("LPL 赛事获取失败：" + ((e && e.message) || "未知错误"), "err");
   });
-  safeRun(loadLPL(), "LPL", sources.lpl);
-  safeRun(loadLCK(), "LCK", sources.lck);
 })();
