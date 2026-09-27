@@ -440,7 +440,7 @@
         if (p[1] - 1 !== view.m || p[0] !== view.y) { view = { y: p[0], m: p[1] - 1 }; render(); }
         else { markSel(); }
         /* 手机版不再弹抽屉，直接更新月视图下方的详情 */
-        if (mini) fillDay($("#mTitle"), $("#mMeta"), $("#mlist"), sel);
+        if (mini) fillList($("#mlist"), sel);
         else openDrawer();
       });
     });
@@ -453,7 +453,7 @@
   function render() {
     renderHeader();
     renderDays();
-    if (mini) fillDay($("#mTitle"), $("#mMeta"), $("#mlist"), sel);
+    if (mini) fillList($("#mlist"), sel);
   }
 
   /* ---------- 某一天的详情内容：右侧抽屉与手机版下方详情共用 ---------- */
@@ -481,6 +481,13 @@
       "</div>";
   }
 
+  /* 只填列表（手机版下方直接用，没有标题栏） */
+  function fillList(listEl, k) {
+    if (!listEl) return;
+    const list = matches[k] || [];
+    listEl.innerHTML = list.length ? list.map(cardHtml).join("") : EMPTY_DAY;
+  }
+
   function fillDay(titleEl, metaEl, listEl, k) {
     if (!titleEl || !listEl) return;
     const p = String(k).split("-").map(Number);
@@ -488,8 +495,7 @@
     titleEl.textContent = (d.getMonth() + 1) + " 月 " + d.getDate() + " 日";
     metaEl.innerHTML = d.getFullYear() + " 年 · <b>星期" + WEEK_CN[d.getDay()] + "</b>" +
       (k === todayKey ? " · 今天" : "");
-    const list = matches[k] || [];
-    listEl.innerHTML = list.length ? list.map(cardHtml).join("") : EMPTY_DAY;
+    fillList(listEl, k);
   }
 
   /* ---------- 详情抽屉（桌面） ---------- */

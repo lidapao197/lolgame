@@ -84,7 +84,7 @@ header { display: flex; align-items: center; justify-content: flex-start; gap: 2
 .gsel { position: relative; }
 .gsel-btn {
   display: inline-flex; align-items: center; gap: 8px;
-  height: 36px; padding: 0 13px; border-radius: 999px;
+  height: 36px; padding: 0 13px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--surface); color: var(--text);
   font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   box-shadow: var(--shadow);
@@ -115,7 +115,7 @@ header { display: flex; align-items: center; justify-content: flex-start; gap: 2
 .gsel-menu {
   position: absolute; top: calc(100% + 8px); left: 0; z-index: 60;
   min-width: 190px; max-width: 260px; max-height: 300px; overflow-y: auto;
-  padding: 6px; border-radius: 14px;
+  padding: 6px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--surface);
   box-shadow: var(--shadow-lg);
   animation: gselIn .16s var(--ease);
@@ -186,7 +186,7 @@ header { display: flex; align-items: center; justify-content: flex-start; gap: 2
   display: flex; flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 10px;
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -436,18 +436,14 @@ header { display: flex; align-items: center; justify-content: flex-start; gap: 2
     flex-direction: row; justify-content: center; overflow: visible;
   }
 
+  /* 下方赛程：不再做成滚动面板，直接跟在日历后面自然铺开 */
   .detail {
-    display: flex; flex-direction: column;
-    flex: 1; min-height: 190px; max-height: 46vh;
-    background: var(--surface); border: 1px solid var(--line);
-    border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+    display: block; flex: none;
+    min-height: 0; max-height: none; overflow: visible;
+    background: none; border: 0; border-radius: 0; box-shadow: none;
   }
   .detail[hidden] { display: none; }
-  .detail .dtop { flex: none; padding: 12px 14px; border-bottom: 1px solid var(--line); }
-  .detail .d1 { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
-  .detail .d2 { margin-top: 4px; font-size: 12px; color: var(--muted); }
-  .detail .d2 b { color: var(--text); }
-  .detail .dlist { padding: 12px 14px; }
+  .detail .dlist { padding: 12px 0 0; overflow: visible; }
   .card-evt { padding: 12px 14px 14px; gap: 10px; }
   .card-evt .sc { font-size: 22px; }
 }
