@@ -14,8 +14,7 @@
   const TEAM_API = "https://lpl.qq.com/web201612/data/LOL_MATCH2_TEAM_LIST.js";
 
   /* 接口无 CORS 头，浏览器直连会被拦截。
-     首选同源代理 /api（由 worker.js / functions/api.js 提供，线上部署必备），
-     再退到公共代理，最后才直连（本地 file:// 打开时只有公共代理可用） */
+     线上走同源代理 /api（worker.js 提供），再退到公共代理，最后才直连 */
   const API_PROXY = "/api?u=";
   const proxyUrls = (url) => [
     API_PROXY + encodeURIComponent(url),
@@ -89,7 +88,7 @@
     }, 3200);
   }
 
-  /* 依次尝试直连 / 公共代理，返回原始文本 */
+  /* 依次尝试同源 /api → 公共代理 → 直连，返回原始文本 */
   async function getRaw(url) {
     for (const u of proxyUrls(url)) {
       let raw = null;
@@ -332,16 +331,16 @@
     let html = "";
     for (let i = 0; i < 7; i++) {
       const d = (i + ws) % 7;
-      html += '<div class="' + (d === 0 || d === 6 ? "we" : "") + '">' + WEEK_FULL[d] + "</div>";
+      /* 窄屏用「一二三」短名，宽屏用「星期一」全称 */
+      const name = mini ? WEEK_CN[d] : WEEK_FULL[d];
+      html += '<div class="' + (d === 0 || d === 6 ? "we" : "") + '">' + name + "</div>";
     }
     $("#weekdays").innerHTML = html;
   }
 
+  /* brand 已移除，头部只剩月份按钮，加载状态由 toast 提示 */
   function renderHeader() {
     $("#monthBtnText").textContent = view.y + " 年 " + (view.m + 1) + " 月";
-    const tail = source.state === "ready" ? source.n + " 场"
-      : source.state === "fail" ? "加载失败" : "加载中…";
-    $("#sub").textContent = source.name + "　" + tail;
   }
 
   /* 每个日期格可见行数上限，以及最多渲染的 chip 节点数 */
@@ -375,6 +374,18 @@
     });
   }
 
+  /* ---------- 手机版（窄屏）：日期格缩成小格，用圆点表示有比赛 ---------- */
+  const mqMini = window.matchMedia("(max-width: 900px)");
+  let mini = mqMini.matches;
+  function applyMini() {
+    if (!$("#detail")) return;
+    $("#detail").hidden = !mini;
+    $("#days").classList.toggle("mini", mini);
+    renderWeekdays();
+    markSel();
+  }
+  mqMini.addEventListener("change", (e) => { mini = e.matches; applyMini(); render(); });
+
   function renderDays() {
     const ws = WEEK_START;
     const first = new Date(view.y, view.m, 1);
@@ -401,11 +412,17 @@
       if (isToday) cls += " today";
       if (k === sel) cls += " sel";
 
-      /* 多行渲染，实际显示几行由 fitCells() 按格子可用高度自适应 */
+      /* 桌面：多行 chip，显示几行由 fitCells() 按格子高度自适应；
+         手机版：只放最多 3 个圆点表示当天有比赛 */
       let items = "";
-      list.slice(0, MAX_NODES).forEach((m) => {
-        items += '<div class="chip ' + (m.src || "lpl") + '"><b>' + m.time + "</b>" + versusHtml(m) + "</div>";
-      });
+      if (mini) {
+        /* 手机版不论几场都只显示一个红点，避免小格子里挤满点 */
+        items = list.length ? '<div class="dots"><i></i></div>' : "";
+      } else {
+        list.slice(0, MAX_NODES).forEach((m) => {
+          items += '<div class="chip ' + (m.src || "lpl") + '"><b>' + m.time + "</b>" + versusHtml(m) + "</div>";
+        });
+      }
 
       html += '<button class="' + cls + '" data-k="' + k + '" data-n="' + list.length +
         '" style="animation-delay:' + i * 5 + 'ms">' +
@@ -422,7 +439,9 @@
         const p = sel.split("-").map(Number);
         if (p[1] - 1 !== view.m || p[0] !== view.y) { view = { y: p[0], m: p[1] - 1 }; render(); }
         else { markSel(); }
-        openDrawer();
+        /* 手机版不再弹抽屉，直接更新月视图下方的详情 */
+        if (mini) fillDay($("#mTitle"), $("#mMeta"), $("#mlist"), sel);
+        else openDrawer();
       });
     });
   }
@@ -431,46 +450,51 @@
     $("#days").querySelectorAll(".day").forEach((el) => el.classList.toggle("sel", el.dataset.k === sel));
   }
 
-  function render() { renderHeader(); renderDays(); }
+  function render() {
+    renderHeader();
+    renderDays();
+    if (mini) fillDay($("#mTitle"), $("#mMeta"), $("#mlist"), sel);
+  }
 
-  /* ---------- 详情抽屉 ---------- */
-  function openDrawer() {
-    const p = sel.split("-").map(Number);
+  /* ---------- 某一天的详情内容：右侧抽屉与手机版下方详情共用 ---------- */
+  const EMPTY_DAY = '<div class="empty"><span class="em">🎮</span>这一天没有比赛<br>好好休息，等下一场开打</div>';
+
+  function cardHtml(m, i) {
+    const meta = [m.lg, m.mode, m.place].filter(Boolean);
+    return '<div class="card-evt" style="animation-delay:' + i * 40 + 'ms">' +
+      '<div class="tags">' +
+      '<span class="ts">' + m.time + "</span>" +
+      meta.map((x) => '<span class="tagx">' + esc(x) + "</span>").join("") +
+      "</div>" +
+      '<div class="teams">' +
+      '<div class="team"><img class="tlogo" src="' + esc(teamLogo(m, "a")) + '" alt="' + esc(nameOf(m, "a")) +
+      '" onerror="this.style.visibility=\'hidden\'"><span>' + esc(nameOf(m, "a")) + "</span></div>" +
+      '<div class="mid">' +
+      (hasScore(m)
+        ? '<div class="sc">' + esc(m.sa) + " : " + esc(m.sb) + "</div>"
+        : '<div class="vs">VS</div>') +
+      '<div class="st">' + statusText(m.status) + "</div>" +
+      "</div>" +
+      '<div class="team"><img class="tlogo" src="' + esc(teamLogo(m, "b")) + '" alt="' + esc(nameOf(m, "b")) +
+      '" onerror="this.style.visibility=\'hidden\'"><span>' + esc(nameOf(m, "b")) + "</span></div>" +
+      "</div>" +
+      "</div>";
+  }
+
+  function fillDay(titleEl, metaEl, listEl, k) {
+    if (!titleEl || !listEl) return;
+    const p = String(k).split("-").map(Number);
     const d = new Date(p[0], p[1] - 1, p[2]);
-    const wd = d.getDay();
+    titleEl.textContent = (d.getMonth() + 1) + " 月 " + d.getDate() + " 日";
+    metaEl.innerHTML = d.getFullYear() + " 年 · <b>星期" + WEEK_CN[d.getDay()] + "</b>" +
+      (k === todayKey ? " · 今天" : "");
+    const list = matches[k] || [];
+    listEl.innerHTML = list.length ? list.map(cardHtml).join("") : EMPTY_DAY;
+  }
 
-    $("#dTitle").textContent = (d.getMonth() + 1) + " 月 " + d.getDate() + " 日";
-    $("#dMeta").innerHTML = d.getFullYear() + " 年 · <b>星期" + WEEK_CN[wd] + "</b>" +
-      (sel === todayKey ? " · 今天" : "");
-
-    const list = matches[sel] || [];
-
-    if (!list.length) {
-      $("#dlist").innerHTML = '<div class="empty"><span class="em">🎮</span>这一天没有比赛<br>好好休息，等下一场开打</div>';
-    } else {
-      $("#dlist").innerHTML = list.map((m, i) => {
-        const meta = [m.lg, m.mode, m.place].filter(Boolean);
-        return '<div class="card-evt" style="animation-delay:' + i * 40 + 'ms">' +
-          '<div class="tags">' +
-          '<span class="ts">' + m.time + "</span>" +
-          meta.map((x) => '<span class="tagx">' + esc(x) + "</span>").join("") +
-          "</div>" +
-          '<div class="teams">' +
-          '<div class="team"><img class="tlogo" src="' + esc(teamLogo(m, "a")) + '" alt="' + esc(nameOf(m, "a")) +
-          '" onerror="this.style.visibility=\'hidden\'"><span>' + esc(nameOf(m, "a")) + "</span></div>" +
-          '<div class="mid">' +
-          (hasScore(m)
-            ? '<div class="sc">' + esc(m.sa) + " : " + esc(m.sb) + "</div>"
-            : '<div class="vs">VS</div>') +
-          '<div class="st">' + statusText(m.status) + "</div>" +
-          "</div>" +
-          '<div class="team"><img class="tlogo" src="' + esc(teamLogo(m, "b")) + '" alt="' + esc(nameOf(m, "b")) +
-          '" onerror="this.style.visibility=\'hidden\'"><span>' + esc(nameOf(m, "b")) + "</span></div>" +
-          "</div>" +
-          "</div>";
-      }).join("");
-    }
-
+  /* ---------- 详情抽屉（桌面） ---------- */
+  function openDrawer() {
+    fillDay($("#dTitle"), $("#dMeta"), $("#dlist"), sel);
     $("#scrim").classList.add("show");
     $("#drawer").classList.add("show");
   }
@@ -490,7 +514,8 @@
   $("#today").addEventListener("click", () => {
     view = { y: t0.getFullYear(), m: t0.getMonth() };
     sel = todayKey;
-    render(); openDrawer();
+    render();
+    if (!mini) openDrawer();
   });
   $("#monthBtn").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -530,7 +555,7 @@
   });
 
   /* ---------- 初始化 ---------- */
-  applyTheme(); renderWeekdays(); render();
+  applyTheme(); renderWeekdays(); applyMini(); render();
   setGameSelState("正在请求数据…", "loading");
   /* 兜底：加载函数内未捕获的异常也给出失败提示 */
   loadGames().catch((e) => {

@@ -10,10 +10,6 @@
 
 <div class="app">
   <header>
-    <div class="brand">
-      <div class="title" id="title">LOL赛事日历<span class="yr" id="year"></span></div>
-      <div class="sub" id="sub">—</div>
-    </div>
     <div class="tools">
       <div class="gsel" id="gsel" data-state="loading">
         <button class="gsel-btn" id="gselBtn" type="button" aria-haspopup="listbox" aria-expanded="false" title="选择赛事">
@@ -63,9 +59,16 @@
     <div class="days" id="days"></div>
   </section>
 
-  <div class="foot">
-    作者：<span id="author">xxx</span><i>|</i>来源：<span id="source">xxx</span>
-  </div>
+  <!-- 手机版：月视图下方直接显示选中日期的详情（桌面用右侧抽屉） -->
+  <section class="detail" id="detail" hidden>
+    <div class="dtop">
+      <div>
+        <div class="d1" id="mTitle">—</div>
+        <div class="d2" id="mMeta">—</div>
+      </div>
+    </div>
+    <div class="dlist" id="mlist"></div>
+  </section>
 </div>
 
 <div class="toasts" id="toasts"></div>

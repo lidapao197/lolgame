@@ -38,6 +38,8 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* 任何情况下都不出现横向滚动条 */
+html, body { overflow-x: hidden; }
 
 body {
   margin: 0;
@@ -58,14 +60,8 @@ body {
   gap: 16px;
 }
 
-header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap: wrap; }
-
-.brand { flex: 1; min-width: 220px; }
-.title {
-  font-size: clamp(28px, 3.4vw, 40px); font-weight: 700; letter-spacing: -.03em; line-height: 1.05;
-}
-.title .yr { color: var(--faint); font-weight: 400; margin-left: 8px; }
-.sub { margin-top: 8px; font-size: 13px; color: var(--muted); }
+/* 工具栏整体靠左上：不再有 brand 占位，flex 自然左对齐 */
+header { display: flex; align-items: center; justify-content: flex-start; gap: 20px; flex: none; flex-wrap: wrap; }
 
 .tools { display: flex; align-items: center; gap: 8px; }
 
@@ -182,8 +178,7 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 }
 .mpick-foot:hover { background: var(--hover); }
 
-.foot { flex: none; text-align: center; font-size: 12px; color: var(--faint); letter-spacing: .04em; }
-.foot i { color: var(--line); margin: 0 10px; font-style: normal; }
+
 
 /* ---------- 日历主体（占满剩余高度） ---------- */
 .board {
@@ -284,6 +279,11 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
 [data-theme="dark"] .day:hover .more { background: var(--hover); }
 /* [hidden] 的 UA 样式会被上面的 display 覆盖，需显式兜底 */
 .more[hidden], .chip[hidden] { display: none; }
+
+/* 手机版：当天有比赛的圆点指示（最多 3 个） */
+.dots { display: flex; align-items: center; justify-content: center; gap: 3px; margin-top: auto; }
+.dots i { width: 5px; height: 5px; border-radius: 50%; background: #dc2626; opacity: .85; }
+[data-theme="dark"] .dots i { background: #f87171; }
 
 [data-theme="dark"] .chip { color: #a5b4fc; background: rgba(99, 102, 241, .16); }
 [data-theme="dark"] .chip.lpl { color: #fca5a5; background: rgba(239, 68, 68, .16); }
@@ -405,9 +405,51 @@ header { display: flex; align-items: flex-end; gap: 20px; flex: none; flex-wrap:
   .chip b, .chip span { display: none; }
   .more { top: 5px; right: 6px; min-width: 20px; height: 17px; padding: 0 6px; font-size: 10px; }
   .gsel-txt { max-width: 42vw; }
-  .gsel-menu { max-width: calc(94vw - 24px); }
+  .gsel-menu { max-width: calc(100vw - 32px); }
+  /* 月份选择面板：窄屏改为贴左、宽度自适应 */
+  .mpick { left: 0; right: auto; width: auto; max-width: calc(100vw - 32px); }
+  .mpick-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .mpick-grid button { height: 40px; }
   .drawer { top: auto; left: 0; width: auto; max-width: none; height: 78dvh; border-left: 0; border-top: 1px solid var(--line); border-radius: 20px 20px 0 0; transform: translateY(102%); }
   .drawer.show { transform: translateY(0); }
+}
+
+/* 手机（窄屏）：月视图缩成小格 + 下方详情面板 */
+@media (max-width: 900px) {
+  .app { width: 100%; max-width: 100%; padding: 14px 12px 12px; gap: 12px; }
+  /* 按钮放不下就换行，且不允许出现横向滚动 */
+  header { gap: 10px; }
+  .tools { flex-wrap: wrap; }
+  .board { flex: none; min-height: 0; }
+  /* 列宽用 minmax(0,1fr)，避免内容把网格顶宽 */
+  .weekdays { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .weekdays div { padding: 8px 2px; font-size: 12px; letter-spacing: 0; }
+  .days { grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: minmax(46px, auto); }
+  /* 日期号数在格子内垂直 + 水平居中 */
+  .day { padding: 5px 2px 6px; gap: 2px; justify-content: center; }
+  .day .head { justify-content: center; }
+  .num { font-size: 11px; }
+  .day .more { display: none; }
+  /* 圆点脱离文档流固定在格子底部，不干扰号数居中 */
+  .days.mini .items {
+    position: absolute; left: 0; right: 0; bottom: 5px;
+    flex-direction: row; justify-content: center; overflow: visible;
+  }
+
+  .detail {
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 190px; max-height: 46vh;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  }
+  .detail[hidden] { display: none; }
+  .detail .dtop { flex: none; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .detail .d1 { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  .detail .d2 { margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .detail .d2 b { color: var(--text); }
+  .detail .dlist { padding: 12px 14px; }
+  .card-evt { padding: 12px 14px 14px; gap: 10px; }
+  .card-evt .sc { font-size: 22px; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
