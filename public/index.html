@@ -4,11 +4,25 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>LOL赛事日历</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="index.css">
 </head>
 <body>
 
-<div class="app">
+<!-- 顶部悬浮导航：iOS 毛玻璃胶囊，切换首页 / 音乐 -->
+<nav class="fnav" id="fnav" aria-label="页面导航">
+  <span class="fnav-ind" id="fnavInd" aria-hidden="true"></span>
+  <button class="fnav-item on" data-view="home" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 9.7V21h14V9.7"/></svg>
+    <span>首页</span>
+  </button>
+  <button class="fnav-item" data-view="music" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18.5V6l11-2.5V16"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>
+    <span>音乐</span>
+  </button>
+</nav>
+
+<div class="app" id="viewHome">
   <header>
     <div class="tools">
       <div class="gsel" id="gsel" data-state="loading">
@@ -64,6 +78,53 @@
     <div class="dlist" id="mlist"></div>
   </section>
 </div>
+
+<!-- 音乐视图：播放 data/music.json 里的歌曲 -->
+<section class="mview" id="viewMusic" hidden>
+  <div class="player">
+    <div class="np">
+      <div class="cover" id="cover">
+        <img id="coverImg" alt="" hidden>
+        <svg id="coverPh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18.5V6l11-2.5V16"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>
+      </div>
+      <div class="np-meta">
+        <div class="np-title" id="npTitle">未在播放</div>
+        <div class="np-artist" id="npArtist">选择一首开始欣赏</div>
+      </div>
+      <div class="ctrl">
+        <button class="cbtn cbtn-shuffle" id="pShuffle" title="顺序播放（点击切换随机）" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>
+        </button>
+        <button class="cbtn" id="pPrev" title="上一首">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 18.5l-8-6.5 8-6.5v13z"/><path d="M6.5 5.5v13"/></svg>
+        </button>
+        <button class="cbtn cbtn-play" id="pPlay" title="播放 / 暂停">
+          <svg id="icPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8.5 5.5v13l10.5-6.5z"/></svg>
+          <svg id="icPause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" hidden><path d="M8.5 5.5v13M15.5 5.5v13"/></svg>
+        </button>
+        <button class="cbtn" id="pNext" title="下一首">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 5.5l8 6.5-8 6.5v-13z"/><path d="M17.5 5.5v13"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="pbar">
+      <span id="tCur">0:00</span>
+      <div class="track" id="track">
+        <div class="track-rail">
+          <div class="track-fill" id="trackFill"></div>
+          <div class="track-thumb" id="trackThumb"></div>
+        </div>
+      </div>
+      <span id="tDur">0:00</span>
+    </div>
+  </div>
+
+  <div class="plist-head" id="plistHead" hidden>播放列表</div>
+  <div class="plist" id="plist"></div>
+  <div class="empty" id="mEmpty" hidden><span class="em">🎵</span>暂无音乐<br>检查 data/music.json 是否存在且格式正确</div>
+</section>
+
+<audio id="audio" preload="metadata"></audio>
 
 <div class="toasts" id="toasts"></div>
 

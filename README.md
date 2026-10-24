@@ -18,6 +18,8 @@
 | 月份跳转 | 月份按钮 + 年份切换，一键回到本月 |
 | 加载提示 | 顶部居中弹出成功 / 失败提示，失败时给出具体原因 |
 | 主题切换 | 右上角按钮切换深浅色，偏好写入 `localStorage` |
+| 毛玻璃导航 | 顶部中央悬浮 iOS 风格毛玻璃导航，「首页 / 音乐」滑动切换 |
+| 音乐播放 | 播放 `public/data/music.json` 里的歌曲链接，支持上一首 / 下一首、随机 / 顺序切换（默认顺序，随机模式按播放历史回退）、进度拖拽、播完自动连播、播放器吸顶、列表一行最多 5 个自适应（序号 / 封面 / 单曲时长） |
 |
 
 ## 目录结构
@@ -26,15 +28,43 @@
 lolgame/
 ├── public/
 │   ├── index.html  页面结构
-│   ├── index.css   样式（主题变量、日历、抽屉、提示）
-│   └── index.js    接口请求、数据处理、渲染与交互
+│   ├── favicon.svg 站点图标（日历 + 音符）
+│   ├── index.css   样式（主题变量、毛玻璃导航、日历、播放器、抽屉、提示）
+│   ├── index.js    接口请求、数据处理、渲染与交互、音乐播放
+│   └── data/
+│       └── music.json  音乐列表（抖音导出格式，data 数组，play 字段为音频链接）
+├── server.js       本地开发服务器：node server.js 一键跑静态资源 + /api 代理
+├── start.bat       Windows 双击启动（GBK 编码，勿另存为 UTF-8）
 ├── worker.js       唯一后端：/api 代理（补 CORS 头）+ 静态资源回落
 ├── wrangler.jsonc  Workers 部署配置（静态资源目录指向 public/）
 └── README.md
 ```
 
-本地预览：双击 `public/index.html`，或用任意静态服务器（如 `npx serve public`）。
-想完整验证代理，用 `npx wrangler dev`（需要 Node 18+），它会同时跑静态资源和 `/api`。
+本地预览（推荐）：Windows 直接双击 `start.bat` 启动服务，然后访问 `http://localhost:3000`；
+或在命令行运行 `node server.js`（需要 Node 18+）。
+静态资源和 `/api` 代理都在，行为与线上一致；端口可用 `PORT=8080 node server.js` 改，
+端口被占用时（如上一个服务忘关）会自动向后换空闲端口并以日志提示实际地址。
+
+其它方式：双击 `public/index.html`，或用任意静态服务器（如 `npx serve public`）——
+这些方式没有 `/api`，数据会退到公共代理，可能较慢或失败。
+也可以用 `npx wrangler dev`（需要 Node 18+），效果同 `node server.js`。
+
+## 音乐列表配置
+
+音乐页读取 `public/data/music.json`，兼容抖音收藏导出格式，也支持简化字段：
+
+```json
+{
+  "data": [
+    { "title": "歌名", "author": "作者", "duration": 122,
+      "cover": "https://…/封面.jpg", "play": "https://…/音频.mp3" }
+  ]
+}
+```
+
+- 音频取 `play`（或 `url`），作者取 `author`（或 `artist`），其余字段可选
+- 音频域名不限（`<audio>` 直播不受 CORS 限制），链接失效时页面会弹出失败提示并自动跳下一首
+- 深浅色主题、当前选中视图、最后播放的歌曲都会记在 `localStorage`
 
 ## 跨域问题与同源代理
 
@@ -102,5 +132,6 @@ Workers 的 **静态资源 + Worker** 模式由 `wrangler.jsonc` 描述：资源
 
 - 无构建步骤、无环境变量；唯一的「后端」就是 `worker.js` 里的 `/api` 转发
 - 数据经同源 `/api` 代理获取；若官方接口变更或代理失效，页面顶部会弹出失败提示，日历其余功能不受影响
-- 本地以 `file://` 打开时 `/api` 不可用，会自动退到公共代理（可能较慢或失败），建议用 `npx wrangler dev` 预览
+- 本地以 `file://` 打开时 `/api` 不可用，会自动退到公共代理（可能较慢或失败），建议用 `node server.js` 预览
+- 本地服务器 `server.js` 与线上 `worker.js` 的 `/api` 逻辑保持一致（同样的白名单、请求头、CORS）
 - 战队表加载失败时自动降级为纯文字队名，队徽位置留空

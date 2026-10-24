@@ -56,14 +56,18 @@ body {
   width: 80vw; margin: 0 auto;
   height: 100dvh;
   display: flex; flex-direction: column;
-  padding: 20px 22px 16px;
+  /* 顶部给悬浮导航留出空间 */
+  padding: 76px 22px 16px;
   gap: 16px;
 }
 
 /* 工具栏整体靠左上：不再有 brand 占位，flex 自然左对齐 */
 header { display: flex; align-items: center; justify-content: flex-start; gap: 20px; flex: none; flex-wrap: wrap; }
 
-.tools { display: flex; align-items: center; gap: 8px; }
+.tools { display: flex; align-items: center; gap: 8px; flex: 1; }
+
+/* 主题切换固定在工具行最右（右上角），普通元素不悬浮 */
+#theme { margin-left: auto; }
 
 .pill {
   height: 36px; padding: 0 14px; border-radius: 10px;
@@ -370,9 +374,184 @@ header { display: flex; align-items: center; justify-content: flex-start; gap: 2
 .empty { text-align: center; padding: 40px 10px; color: var(--faint); font-size: 13px; line-height: 1.8; }
 .empty .em { font-size: 34px; display: block; margin-bottom: 10px; opacity: .65; }
 
+/* ---------- 顶部悬浮导航（iOS 毛玻璃胶囊） ---------- */
+.fnav {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 80;
+  height: 46px; padding: 5px;
+  display: flex; align-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  box-shadow: 0 12px 34px -14px rgba(20, 22, 29, .35);
+}
+/* 滑动高亮胶囊：跟随选中项平移 */
+.fnav-ind {
+  position: absolute; top: 5px; bottom: 5px; left: 0; width: 0;
+  border-radius: 999px; background: var(--surface);
+  box-shadow: 0 2px 8px rgba(20, 22, 29, .14), inset 0 0 0 1px var(--line);
+  transition: transform .32s var(--ease), width .32s var(--ease);
+}
+.fnav-item {
+  position: relative; z-index: 1;
+  height: 34px; padding: 0 15px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--muted);
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: color .2s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.fnav-item svg { width: 14px; height: 14px; }
+.fnav-item:hover, .fnav-item.on { color: var(--text); }
+
+/* 两个根视图互斥显示（[hidden] 需显式兜底） */
+.app[hidden], .mview[hidden] { display: none; }
+
+/* ---------- 音乐视图 ---------- */
+.mview {
+  width: 80vw; margin: 0 auto;
+  min-height: 100dvh;
+  padding: 76px 22px 28px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+
+.player {
+  position: sticky; top: 66px; z-index: 30;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 16px;
+  /* 毛玻璃 + 吸顶：下滑浏览列表时播放器始终可见 */
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.player .np { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
+.cover {
+  position: relative; width: 76px; height: 76px; flex: none;
+  border-radius: 14px; overflow: hidden;
+  background: linear-gradient(135deg, var(--accent-soft), var(--hover));
+  display: grid; place-items: center; color: var(--accent);
+}
+.cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cover svg { width: 26px; height: 26px; }
+.np-meta { flex: 1; min-width: 0; }
+.np-title {
+  font-size: 16px; font-weight: 800; letter-spacing: -.02em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.np-artist { margin-top: 5px; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 进度条：自绘轨道 + 圆点，支持点按与拖拽 */
+.pbar { display: flex; align-items: center; gap: 10px; }
+.pbar span { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; flex: none; min-width: 30px; }
+.pbar span:last-child { text-align: right; }
+.track { flex: 1; height: 20px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
+.track-rail { position: relative; width: 100%; height: 4px; border-radius: 999px; background: var(--line); }
+.track-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 999px; background: var(--accent); }
+.track-thumb {
+  position: absolute; top: 50%; left: 0; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--surface);
+  border: 2px solid var(--accent);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(20, 22, 29, .25);
+}
+
+/* 控制按钮：歌名行右端；窄屏放不下时整组换行仍靠右 */
+.ctrl { display: flex; align-items: center; gap: 22px; margin-left: auto; }
+.cbtn {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  display: grid; place-items: center; cursor: pointer;
+  transition: background .2s var(--ease), border-color .2s var(--ease), transform .15s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.cbtn svg { width: 18px; height: 18px; }
+.cbtn svg[hidden] { display: none; }
+.cbtn:hover { background: var(--hover); border-color: var(--faint); }
+.cbtn:active { transform: scale(.94); }
+.cbtn-play {
+  width: 58px; height: 58px;
+  background: var(--accent); border-color: var(--accent); color: #fff;
+  box-shadow: 0 12px 26px -12px var(--accent);
+}
+.cbtn-play:hover { background: var(--accent); border-color: var(--accent); filter: brightness(1.08); }
+.cbtn-play svg { width: 22px; height: 22px; }
+/* 随机播放：最左小按钮，右侧等宽占位让播放键保持居中 */
+.cbtn-shuffle { width: 40px; height: 40px; }
+.cbtn-shuffle svg { width: 16px; height: 16px; }
+.cbtn-shuffle.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.plist-head {
+  font-size: 12.5px; font-weight: 700; letter-spacing: .04em;
+  color: var(--muted); padding: 2px 4px 0;
+}
+.plist-head[hidden] { display: none; }
+/* 播放列表：一行最多 5 个的自适应网格，单元格保留行内容（序号+封面+歌名+时长） */
+.plist {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(5, 1fr);
+}
+@media (max-width: 1100px) { .plist { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 900px) { .plist { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px) { .plist { grid-template-columns: repeat(2, 1fr); } }
+
+.prow {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--cell);
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  transition: background .18s var(--ease), border-color .18s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+  animation: fade .3s var(--ease) backwards;
+}
+.prow:hover { background: var(--hover); }
+.prow.on {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+.prow .idx {
+  width: 18px; flex: none; text-align: center;
+  font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums;
+}
+.prow.on .idx { color: var(--accent); font-weight: 700; }
+.prow .pt { flex: 1; min-width: 0; }
+.prow .pt b {
+  display: block; font-size: 12.5px; font-weight: 700; letter-spacing: -.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.prow .pt span { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prow .pd { flex: none; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+/* 列表封面缩略图：加载失败退回音符占位 */
+.pcover {
+  position: relative; width: 38px; height: 38px; flex: none;
+  border-radius: 9px; overflow: hidden;
+  background: linear-gradient(135deg, var(--accent-soft), var(--hover));
+  display: grid; place-items: center; color: var(--accent);
+}
+.pcover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pcover img[hidden] { display: none; }
+.pcover svg { width: 16px; height: 16px; }
+.pcover svg[hidden] { display: none; }
+/* 正在播放：跳动条取代序号 */
+.prow .eq { display: none; align-items: flex-end; gap: 2.5px; height: 14px; width: 18px; flex: none; justify-content: center; }
+.prow.on .eq { display: flex; }
+.prow.on .idx { display: none; }
+.eq i { width: 3px; height: 5px; border-radius: 2px; background: var(--accent); }
+.prow.on.playing .eq i { animation: eq 1s ease-in-out infinite; }
+.prow.on.playing .eq i:nth-child(2) { animation-delay: .25s; }
+.prow.on.playing .eq i:nth-child(3) { animation-delay: .5s; }
+@keyframes eq { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+
 /* ---------- 数据加载提示 ---------- */
 .toasts {
-  position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 90;
+  position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 90;
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   pointer-events: none;
 }
@@ -416,7 +595,12 @@ header { display: flex; align-items: center; justify-content: flex-start; gap: 2
 
 /* 手机（窄屏）：月视图缩成小格 + 下方详情面板 */
 @media (max-width: 900px) {
-  .app { width: 100%; max-width: 100%; padding: 14px 12px 12px; gap: 12px; }
+  .app { width: 100%; max-width: 100%; padding: 70px 12px 12px; gap: 12px; }
+  .mview { width: 100%; padding: 70px 12px 20px; }
+  .cover { width: 64px; height: 64px; }
+  .cbtn { width: 48px; height: 48px; }
+  .cbtn-play { width: 62px; height: 62px; }
+  .ctrl { gap: 14px; }
   /* 按钮放不下就换行，且不允许出现横向滚动 */
   header { gap: 10px; }
   .tools { flex-wrap: wrap; }
