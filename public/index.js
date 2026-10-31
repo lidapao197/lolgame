@@ -3,7 +3,8 @@
   const pad = (n) => String(n).padStart(2, "0");
   const WEEK_CN = ["日", "一", "二", "三", "四", "五", "六"];
   const WEEK_FULL = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
-  const PREF = "calendar.pref.v4";
+  const PREF = "calendar.pref.v6";
+  const PREF_OLD = "calendar.pref.v5";
 
   /* ---------- 数据接口 ---------- */
   const GAME_API = "https://lpl.qq.com/web201612/data/LOL_SGameList_Info.js";
@@ -25,10 +26,13 @@
 
   /* ---------- 偏好（默认周一起始） ---------- */
   const WEEK_START = 1;
-  let pref = { theme: "light", view: "home", shuffle: false };
+  /* 可选主题色，与 index.css 里的 [data-accent="..."] 一一对应 */
+  const ACCENTS = ["indigo", "blue", "purple", "pink", "orange", "teal", "green"];
+  let pref = { accent: "indigo", view: "home", shuffle: false, volume: 0.8, muted: false, fsite: "tencent" };
   try {
-    const v = JSON.parse(localStorage.getItem(PREF));
-    if (v) pref = Object.assign(pref, v);
+    /* v6：影视默认平台改为腾讯视频。旧偏好里除 fsite 外全部沿用 */
+    const v = JSON.parse(localStorage.getItem(PREF) || localStorage.getItem(PREF_OLD) || "null");
+    if (v) { delete v.fsite; pref = Object.assign(pref, v); }
   } catch (e) {}
   function save() { try { localStorage.setItem(PREF, JSON.stringify(pref)); } catch (e) {} }
 
@@ -298,13 +302,32 @@
     return '<span class="ta">' + na + "</span>" + mid + '<span class="tb">' + nb + "</span>";
   }
 
-  /* ---------- 主题 ---------- */
-  function applyTheme() {
-    document.documentElement.setAttribute("data-theme", pref.theme);
-    $("#themeIcon").innerHTML = pref.theme === "dark"
-      ? '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>'
-      : '<circle cx="12" cy="12" r="4"/><path d="M12 2v1.6M12 20.4V22M2 12h1.6M20.4 12H22M4.6 4.6l1.1 1.1M18.3 18.3l1.1 1.1M19.4 4.6l-1.1 1.1M5.7 18.3l-1.1 1.1"/>';
+  /* ---------- 主题色 ---------- */
+  function applyAccent() {
+    if (ACCENTS.indexOf(pref.accent) < 0) pref.accent = "indigo";
+    document.documentElement.setAttribute("data-accent", pref.accent);
+    document.querySelectorAll(".acc-dot").forEach((b) => {
+      b.classList.toggle("on", b.dataset.accent === pref.accent);
+    });
   }
+
+  /* 主题色面板：点击外部 / Esc 关闭 */
+  const accPop = $("#accPop");
+  function toggleAccPop(open) {
+    const on = open === undefined ? accPop.hidden : !!open;
+    accPop.hidden = !on;
+    $("#accent").setAttribute("aria-expanded", String(on));
+  }
+  $("#accent").addEventListener("click", (e) => { e.stopPropagation(); toggleAccPop(); });
+  accPop.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const b = e.target.closest(".acc-dot");
+    if (!b) return;
+    pref.accent = b.dataset.accent;
+    save(); applyAccent();
+    toggleAccPop(false);
+  });
+  document.addEventListener("click", () => toggleAccPop(false));
 
   /* ---------- 月份选择器 ---------- */
   let pickY = view.y;
@@ -536,17 +559,15 @@
   });
   document.addEventListener("click", closePick);
 
-  $("#theme").addEventListener("click", () => {
-    pref.theme = pref.theme === "dark" ? "light" : "dark";
-    save(); applyTheme();
-    render();
-    /* 重绘抽屉以切换明/暗版战队图标 */
-    if ($("#drawer").classList.contains("show")) openDrawer();
-  });
   $("#close").addEventListener("click", closeDrawer);
   $("#scrim").addEventListener("click", closeDrawer);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { if (pickOpen()) closePick(); else closeDrawer(); return; }
+    if (e.key === "Escape") {
+      if (!$("#fModal").hidden) { closeFilmDetail(); return; }
+      if (!accPop.hidden) { toggleAccPop(false); return; }
+      if (pickOpen()) closePick(); else closeDrawer();
+      return;
+    }
     if (/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
     /* 音乐视图下不响应日历快捷键 */
     if (curView !== "home") return;
@@ -562,8 +583,9 @@
     fitTimer = setTimeout(fitCells, 120);
   });
 
-  /* ---------- 顶部导航：首页 / 音乐 视图切换 ---------- */
-  let curView = pref.view === "music" ? "music" : "home";
+  /* ---------- 顶部导航：首页 / 影视 / 音乐 视图切换 ---------- */
+  const VIEWS = ["home", "film", "music"];
+  let curView = VIEWS.indexOf(pref.view) >= 0 ? pref.view : "home";
   const fnavItems = Array.prototype.slice.call(document.querySelectorAll(".fnav-item"));
   function placeNavInd() {
     const on = document.querySelector(".fnav-item.on");
@@ -573,13 +595,16 @@
     ind.style.transform = "translateX(" + on.offsetLeft + "px)";
   }
   function switchView(v, skipSave) {
-    curView = v === "music" ? "music" : "home";
+    curView = VIEWS.indexOf(v) >= 0 ? v : "home";
     fnavItems.forEach((b) => b.classList.toggle("on", b.dataset.view === curView));
     placeNavInd();
     $("#viewHome").hidden = curView !== "home";
+    $("#viewFilm").hidden = curView !== "film";
     $("#viewMusic").hidden = curView !== "music";
     /* 回到首页时格子高度可能变过，重算能放几行 */
     if (curView === "home") fitCells();
+    /* 影视页首次进入才拉数据，避免一打开就发 4 个请求 */
+    if (curView === "film") ensureFilm();
     if (!skipSave) { pref.view = curView; save(); }
   }
   fnavItems.forEach((b) => b.addEventListener("click", () => switchView(b.dataset.view)));
@@ -726,6 +751,70 @@
     track.addEventListener("pointercancel", () => { dragging = false; });
   })();
 
+  /* ---------- 音量：滑杆拖拽 / 静音切换 / 键盘微调 ---------- */
+  const VOL_ICON = {
+    mute: '<path d="M4 9.6h3.1L12 5.8v12.4L7.1 14.4H4z"/><path d="M16.2 9.8l4.2 4.6M20.4 9.8l-4.2 4.6"/>',
+    low: '<path d="M4 9.6h3.1L12 5.8v12.4L7.1 14.4H4z"/><path d="M15.3 9.5a3.6 3.6 0 010 5"/>',
+    high: '<path d="M4 9.6h3.1L12 5.8v12.4L7.1 14.4H4z"/><path d="M15.3 9.5a3.6 3.6 0 010 5"/><path d="M18 7a7.2 7.2 0 010 10"/>'
+  };
+
+  /* 把 pref.volume / pref.muted 同步到 <audio>，并重绘图标与滑杆 */
+  function applyVol() {
+    const n = Number(pref.volume);
+    pref.volume = isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.8;
+    audio.volume = pref.volume;
+    audio.muted = !!pref.muted;
+    const v = pref.muted ? 0 : pref.volume;
+    $("#vIcon").innerHTML = v <= 0.001 ? VOL_ICON.mute : (v < 0.5 ? VOL_ICON.low : VOL_ICON.high);
+    $("#vBtn").title = pref.muted ? "取消静音" : "静音";
+    $("#vBtn").classList.toggle("off", pref.muted || v <= 0.001);
+    $("#vFill").style.width = v * 100 + "%";
+    $("#vThumb").style.left = v * 100 + "%";
+    $("#vTrack").setAttribute("aria-valuenow", String(Math.round(v * 100)));
+  }
+
+  (function () {
+    const t = $("#vTrack");
+    let dragging = false;
+    function set(e) {
+      const r = t.getBoundingClientRect();
+      const v = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      pref.volume = v;
+      pref.muted = v <= 0;
+      applyVol(); save();
+    }
+    t.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      try { t.setPointerCapture(e.pointerId); } catch (err) { /* 合成事件无有效 pointerId */ }
+      set(e);
+    });
+    t.addEventListener("pointermove", (e) => { if (dragging) set(e); });
+    t.addEventListener("pointerup", () => { dragging = false; });
+    t.addEventListener("pointercancel", () => { dragging = false; });
+    t.addEventListener("keydown", (e) => {
+      const step = e.shiftKey ? 0.1 : 0.05;
+      if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+        pref.volume = Math.max(0, pref.volume - step);
+        pref.muted = pref.volume <= 0;
+      } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+        pref.volume = Math.min(1, pref.volume + step);
+        pref.muted = false;
+      } else return;
+      e.preventDefault();
+      applyVol(); save();
+    });
+  })();
+
+  $("#vBtn").addEventListener("click", () => {
+    if (pref.muted || pref.volume <= 0) {
+      pref.muted = false;
+      if (pref.volume <= 0) pref.volume = 0.8;
+    } else {
+      pref.muted = true;
+    }
+    applyVol(); save();
+  });
+
   $("#pPlay").addEventListener("click", () => {
     if (!songs.length) return;
     if (curSong < 0) return playIndex(0, true);
@@ -747,6 +836,8 @@
     toast(pref.shuffle ? "已开启随机播放" : "已切回顺序播放", "ok");
   });
   applyShuffle();
+  /* 音量沿用上次设置（首次为 80%） */
+  applyVol();
 
   /* 音乐列表是可选数据：失败时静默降级为空态，不弹提示 */
   async function loadMusic() {
@@ -774,8 +865,204 @@
     }
   }
 
+  /* ---------- 影视视图：平台 × 分类海报墙 ---------- */
+  const FILM_PER_PAGE = 20;
+  /* 分类顺序：电视剧 → 电影 → 动漫 → 综艺 */
+  const FILM_CATS = [["tv", "电视剧"], ["movie", "电影"], ["anime", "动漫"], ["variety", "综艺"]];
+  /* 平台顺序：腾讯视频排第一 */
+  const FILM_SITES = ["tencent", "youku", "iqiyi", "mango"];
+  const SITE_NAME = { youku: "优酷", iqiyi: "爱奇艺", tencent: "腾讯视频", mango: "芒果TV" };
+  const film = {
+    site: FILM_SITES.indexOf(pref.fsite) >= 0 ? pref.fsite : FILM_SITES[0],
+    page: {},        // 分类 -> 当前页码
+    cache: new Map(),// "site:cat:page" -> items
+    started: false
+  };
+  const ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+  const ICON_NEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
+
+  const filmKey = (site, cat, page) => site + ":" + cat + ":" + page;
+  const filmPage = (cat) => film.page[cat] || 1;
+
+  function filmCard(it, i) {
+    const corner = it.corner ? '<i class="fcorner">' + esc(it.corner) + "</i>" : "";
+    const tip = it.title + (it.date ? " · " + it.date : "");
+    return '<button class="fcard" type="button" data-i="' + i + '" title="' + esc(tip) + '">' +
+      '<span class="fposter">' + corner +
+      '<img src="' + esc(it.poster) + '" alt="" loading="lazy" referrerpolicy="no-referrer"' +
+      ' onerror="this.style.opacity=0">' +
+      "</span>" +
+      '<b class="ftitle">' + esc(it.title) + "</b>" +
+      '<span class="fdate">' + esc(it.date || "") + "</span>" +
+      "</button>";
+  }
+
+  function filmSkeleton(n) {
+    let h = "";
+    for (let i = 0; i < n; i++) {
+      h += '<div class="fcard sk"><span class="fposter"></span><b class="ftitle"></b><span class="fdate"></span></div>';
+    }
+    return h;
+  }
+
+  function filmRowsHtml() {
+    return FILM_CATS.map(([cat, name]) =>
+      '<section class="frow" data-cat="' + cat + '">' +
+        '<div class="frow-head"><h3>' + name + "</h3><span class=\"fcount\"></span>" +
+          '<div class="fpager"><span class="fpnum">第 1 页</span>' +
+            '<button class="fbtn" type="button" data-dir="-1" title="上一页" disabled>' + ICON_PREV + "</button>" +
+            '<button class="fbtn" type="button" data-dir="1" title="下一页">' + ICON_NEXT + "</button>" +
+          "</div>" +
+        "</div>" +
+        '<div class="fstrip">' + filmSkeleton(FILM_PER_PAGE) + "</div>" +
+      "</section>"
+    ).join("");
+  }
+
+  async function fetchFilm(site, cat, page) {
+    try {
+      const res = await fetch("/poster?site=" + site + "&cat=" + cat + "&page=" + page, {
+        headers: { accept: "application/json" }
+      });
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j && j.ok ? j : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function paintFilmRow(row, cat, items) {
+    const page = filmPage(cat);
+    const strip = row.querySelector(".fstrip");
+    row.querySelector(".fcount").textContent = items.length ? items.length + " 部" : "";
+    row.querySelector(".fpnum").textContent = "第 " + page + " 页";
+    row.querySelector('[data-dir="-1"]').disabled = page <= 1;
+    row.querySelector('[data-dir="1"]').disabled = items.length < FILM_PER_PAGE;
+    strip.innerHTML = items.length
+      ? items.map(filmCard).join("")
+      : '<div class="fempty">该分类暂时没有取到内容</div>';
+    strip.scrollLeft = 0;
+  }
+
+  async function loadFilmRow(cat) {
+    const row = document.querySelector('.frow[data-cat="' + cat + '"]');
+    if (!row) return;
+    const site = film.site;
+    const page = filmPage(cat);
+    const key = filmKey(site, cat, page);
+
+    if (!film.cache.has(key)) {
+      row.querySelector(".fstrip").innerHTML = filmSkeleton(FILM_PER_PAGE);
+      row.querySelector(".fpnum").textContent = "加载中…";
+      const r = await fetchFilm(site, cat, page);
+      /* 请求期间可能已切平台 / 翻页，结果丢弃 */
+      if (film.site !== site || filmPage(cat) !== page) return;
+      if (!r) {
+        row.querySelector(".fstrip").innerHTML =
+          '<div class="fempty">海报加载失败，接口可能暂时不可用' +
+          '<button type="button" data-retry="1">重试</button></div>';
+        row.querySelector(".fpnum").textContent = "第 " + page + " 页";
+        return;
+      }
+      film.cache.set(key, r.items);
+    }
+    if (film.site !== site || filmPage(cat) !== page) return;
+    paintFilmRow(row, cat, film.cache.get(key));
+  }
+
+  function ensureFilm() {
+    if (film.started) return;
+    film.started = true;
+    $("#fRows").innerHTML = filmRowsHtml();
+    markFilmTab();
+    FILM_CATS.forEach(([cat]) => loadFilmRow(cat));
+  }
+
+  function markFilmTab() {
+    $("#fTabs").querySelectorAll(".ftab").forEach((b) => {
+      const on = b.dataset.site === film.site;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-selected", String(on));
+    });
+  }
+
+  $("#fTabs").addEventListener("click", (e) => {
+    const b = e.target.closest(".ftab");
+    if (!b || b.dataset.site === film.site) return;
+    film.site = b.dataset.site;
+    pref.fsite = film.site; save();
+    markFilmTab();
+    FILM_CATS.forEach(([cat]) => { film.page[cat] = 1; });
+    FILM_CATS.forEach(([cat]) => loadFilmRow(cat));
+  });
+
+  /* ---------- 影视详情弹层 ---------- */
+  function openFilmDetail(it) {
+    const siteName = SITE_NAME[film.site] || "";
+    const img = $("#fmPoster");
+    if (it.poster) { img.src = it.poster; img.hidden = false; } else { img.removeAttribute("src"); img.hidden = true; }
+    img.alt = it.title;
+    $("#fmTitle").textContent = it.title;
+
+    const tags = [];
+    if (siteName) tags.push('<span class="fm-tag">' + esc(siteName) + "</span>");
+    if (it.corner) tags.push('<span class="fm-tag plain">' + esc(it.corner) + "</span>");
+    if (it.note) tags.push('<span class="fm-tag plain">' + esc(it.note) + "</span>");
+    $("#fmTags").innerHTML = tags.join("");
+
+    const rows = [];
+    if (it.rating) rows.push('<div class="fm-row"><b>评分</b><span class="fm-score">' + esc(it.rating) + "</span></div>");
+    if (it.date) rows.push('<div class="fm-row"><b>上映</b><span>' + esc(it.date) + "</span></div>");
+    if (it.update) rows.push('<div class="fm-row"><b>状态</b><span>' + esc(it.update) + "</span></div>");
+    if (it.cast) rows.push('<div class="fm-row"><b>主演</b><span>' + esc(it.cast) + "</span></div>");
+    $("#fmRows").innerHTML = rows.join("");
+
+    const desc = it.desc || "";
+    $("#fmDesc").textContent = desc || "该平台未提供简介";
+    $("#fmDesc").classList.toggle("empty", !desc);
+
+    $("#fModal").hidden = false;
+    document.documentElement.classList.add("lock");
+  }
+
+  function closeFilmDetail() {
+    if ($("#fModal").hidden) return;
+    $("#fModal").hidden = true;
+    document.documentElement.classList.remove("lock");
+  }
+
+  $("#fClose").addEventListener("click", closeFilmDetail);
+  $("#fScrim").addEventListener("click", closeFilmDetail);
+
+  $("#fRows").addEventListener("click", (e) => {
+    const retry = e.target.closest("[data-retry]");
+    if (retry) {
+      const row = retry.closest(".frow");
+      film.cache.delete(filmKey(film.site, row.dataset.cat, filmPage(row.dataset.cat)));
+      loadFilmRow(row.dataset.cat);
+      return;
+    }
+    /* 点海报 → 弹详情，不再跳转外站 */
+    const card = e.target.closest(".fcard");
+    if (card && card.dataset.i !== undefined) {
+      const cat = card.closest(".frow").dataset.cat;
+      const list = film.cache.get(filmKey(film.site, cat, filmPage(cat))) || [];
+      const it = list[Number(card.dataset.i)];
+      if (it) openFilmDetail(it);
+      return;
+    }
+    const btn = e.target.closest(".fbtn");
+    if (!btn || btn.disabled) return;
+    const cat = btn.closest(".frow").dataset.cat;
+    const next = Math.max(1, filmPage(cat) + Number(btn.dataset.dir));
+    if (next === filmPage(cat)) return;
+    film.page[cat] = next;
+    loadFilmRow(cat);
+  });
+
   /* ---------- 初始化 ---------- */
-  applyTheme(); renderWeekdays(); applyMini(); render();
+  applyAccent(); renderWeekdays(); applyMini(); render();
   switchView(curView, true);
   setGameSelState("正在请求数据…", "loading");
   /* 兜底：加载函数内未捕获的异常也给出失败提示 */

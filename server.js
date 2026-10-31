@@ -1,5 +1,6 @@
 /* 本地开发服务器：node server.js（或 PORT=8080 node server.js）
-   行为与 worker.js 一致：/api 代理腾讯 LPL 数据（补 CORS 头），其余返回 public/ 静态文件。
+   行为与 worker.js 一致：/api 代理腾讯 LPL 数据（补 CORS 头）、/poster 聚合影视海报，
+   其余返回 public/ 静态文件。
    只用 Node 内置模块，无需安装依赖；需要 Node 18+（内置 fetch）。 */
 
 const http = require("http");
@@ -71,9 +72,28 @@ async function handleApi(req, res, url) {
   res.end(body);
 }
 
+/* 影视海报聚合：与 worker.js 共用 poster.mjs（ESM，这里动态 import） */
+let posterModule = null;
+async function handlePoster(res, url) {
+  try {
+    if (!posterModule) posterModule = await import("./poster.mjs");
+    const r = await posterModule.fetchPosters(
+      url.searchParams.get("site"),
+      url.searchParams.get("cat"),
+      url.searchParams.get("page")
+    );
+    res.writeHead(r.ok ? 200 : 502, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "public, max-age=300"
+    });
+    res.end(JSON.stringify(r));
+  } catch (e) {
+    json(res, { ok: false, error: (e && e.message) || "poster error" }, 500);
+  }
+}
+
 /* 静态文件：只允许 public/ 目录内的路径 */
-function serveStatic(res, pathname) {
-  let filePath = path.normalize(path.join(PUBLIC_DIR, pathname === "/" ? "index.html" : pathname));
+function serveStatic(res, pathname) {  let filePath = path.normalize(path.join(PUBLIC_DIR, pathname === "/" ? "index.html" : pathname));
   if (filePath !== PUBLIC_DIR && filePath.indexOf(PUBLIC_DIR + path.sep) !== 0) {
     return json(res, { error: "forbidden" }, 403);
   }
@@ -98,6 +118,8 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (url.pathname === "/api") {
     handleApi(req, res, url).catch((e) => json(res, { error: (e && e.message) || "unknown" }, 500));
+  } else if (url.pathname === "/poster") {
+    handlePoster(res, url);
   } else {
     serveStatic(res, url.pathname);
   }

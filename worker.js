@@ -1,4 +1,7 @@
-/* Cloudflare Worker：/api 代理腾讯 LPL 数据（补 CORS 头），其余请求回落到静态资源 */
+/* Cloudflare Worker：/api 代理腾讯 LPL 数据（补 CORS 头）、/poster 聚合影视海报，
+   其余请求回落到静态资源 */
+
+import { fetchPosters } from "./poster.mjs";
 
 /* 只放行官方数据域名，避免被当成开放代理 */
 const ALLOWED_HOSTS = ["lpl.qq.com"];
@@ -23,8 +26,24 @@ function fail(msg, status) {
 
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+
+    /* 影视海报：/poster?site=youku&cat=tv&page=1 */
+    if (url.pathname === "/poster") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+      if (request.method !== "GET") return fail("method not allowed", 405);
+      const r = await fetchPosters(url.searchParams.get("site"), url.searchParams.get("cat"), url.searchParams.get("page"));
+      if (!r.ok) return fail(r.error || "fetch failed", 502);
+      return new Response(JSON.stringify(r), {
+        headers: Object.assign({
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=300"
+        }, CORS)
+      });
+    }
+
     /* 非 /api 请求直接返回静态文件 */
-    if (new URL(request.url).pathname !== "/api") return env.ASSETS.fetch(request);
+    if (url.pathname !== "/api") return env.ASSETS.fetch(request);
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (request.method !== "GET") return fail("method not allowed", 405);
