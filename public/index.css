@@ -988,6 +988,133 @@ html.lock { overflow: hidden; }
 .fm-row span { min-width: 0; word-break: break-word; }
 .fm-row .fm-score { color: var(--accent); font-weight: 800; font-variant-numeric: tabular-nums; }
 
+/* ---------- 弹幕视图 ---------- */
+.dview {
+  /* 工具栏内边距，方块列表按同一数值缩进，保证上下左右对齐 */
+  --dp: 12px;
+  width: var(--shell-w); margin: 0 auto;
+  min-height: 100dvh;
+  padding: 76px 0 34px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.dview[hidden] { display: none; }
+
+/* 工具栏：整行铺满，链接框吸收剩余空间，内容填满不留空隙 */
+.dbar {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+  padding: var(--dp);
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, .72);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(26px) saturate(160%);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
+}
+.dinput {
+  height: 38px; min-width: 0; padding: 0 14px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: rgba(255, 255, 255, .78);
+  color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600;
+  outline: none;
+  transition: border-color .2s var(--ease), box-shadow .2s var(--ease);
+}
+.dinput::placeholder { color: var(--faint); font-weight: 500; }
+.dinput:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.dinput-name { flex: 0 0 180px; width: 180px; }
+.dinput-url { flex: 1 1 auto; width: auto; }
+.dadd {
+  height: 38px; padding: 0 20px; flex: none;
+  border: 0; border-radius: 12px; cursor: pointer;
+  color: #fff; font: inherit; font-size: 13px; font-weight: 700;
+  background: linear-gradient(140deg, var(--accent-2), var(--accent));
+  box-shadow: 0 10px 20px -12px var(--glow);
+  transition: transform .16s var(--ease), box-shadow .2s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.dadd:hover { box-shadow: 0 14px 24px -12px var(--glow); }
+.dadd:active { transform: scale(.97); }
+/* 检测中：禁用态，不再变形 */
+.dadd:disabled { opacity: .62; cursor: default; transform: none; box-shadow: 0 10px 20px -12px var(--glow); }
+
+/* 左侧「全部测试」：低调的次按钮 */
+.dtest-all {
+  height: 38px; padding: 0 14px; flex: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: rgba(255, 255, 255, .78); color: var(--muted);
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  white-space: nowrap;
+  transition: color .2s var(--ease), border-color .2s var(--ease), background .2s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.dtest-all svg { width: 14px; height: 14px; }
+.dtest-all:hover { color: var(--accent); border-color: var(--accent); }
+.dtest-all:disabled { opacity: .6; cursor: default; color: var(--muted); border-color: var(--line); }
+
+/* 弹幕源：一行五个方块，左右与工具栏内部内容对齐。
+   注意不要复用 .dlist：那是赛程详情抽屉的列表样式（flex + flex:1），同名会把行高撑开 */
+.dmlist {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-content: start;
+  gap: 10px;
+  padding: 0 var(--dp);
+}
+.dmlist:empty { display: none; }
+.dblock {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; height: 46px; padding: 0 10px 0 15px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, .72);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(26px) saturate(160%);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
+  font-size: 13.5px; font-weight: 700; color: var(--text);
+  overflow: hidden;
+  animation: dblock-in .26s var(--ease) backwards;
+}
+.dname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dops { flex: none; display: inline-flex; align-items: center; gap: 2px; }
+.dico {
+  width: 24px; height: 24px; padding: 0; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 8px; background: transparent;
+  color: var(--faint); cursor: pointer;
+  transition: background .18s var(--ease), color .18s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.dico svg { width: 14px; height: 14px; }
+.dico:hover { background: var(--hover); color: var(--accent); }
+.dico:disabled { opacity: .45; cursor: default; background: transparent; color: var(--faint); }
+/* 可用性指示灯：未测试灰、可访问绿、不可访问红 */
+.ddot { width: 8px; height: 8px; margin-left: 4px; border-radius: 50%; flex: none; background: var(--faint); }
+.ddot.ok { background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, .16); }
+.ddot.bad { background: #f43f5e; box-shadow: 0 0 0 3px rgba(244, 63, 94, .16); }
+
+/* 删除按钮：悬停时出现在方块右上角 */
+.ddel {
+  position: absolute; top: 2px; right: 2px; z-index: 2;
+  width: 16px; height: 16px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: transparent; color: var(--faint);
+  cursor: pointer;
+  opacity: 0; pointer-events: none;
+  transition: opacity .18s var(--ease), background .18s var(--ease), color .18s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.ddel svg { width: 10px; height: 10px; }
+.dblock:hover .ddel, .ddel:focus-visible { opacity: 1; pointer-events: auto; }
+.ddel:hover { background: rgba(244, 63, 94, .14); color: #f43f5e; }
+/* 触屏没有悬停：常驻显示，降低存在感 */
+@media (hover: none) {
+  .ddel { opacity: .55; pointer-events: auto; }
+}
+@keyframes dblock-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+
 /* ---------- 数据加载提示 ---------- */
 .toasts {
   position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 90;
@@ -1048,6 +1175,15 @@ html.lock { overflow: hidden; }
   .app { padding: 70px 12px 14px; gap: 12px; }
   .mview { padding: 70px 12px 24px; }
   .fview { padding: 70px 12px 24px; }
+  .dview { padding: 70px 12px 24px; --dp: 10px; }
+  /* 窄屏仍保持一行：工具栏收窄，方块两列 */
+  .dbar { width: 100%; gap: 8px; }
+  .dtest-all { padding: 0 10px; }
+  .dinput-name { flex: 0 1 78px; width: 78px; }
+  .dinput-url { flex: 1 1 auto; width: auto; }
+  .dinput { padding: 0 10px; }
+  .dadd { padding: 0 14px; }
+  .dmlist { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fcard { width: 104px; }
   .frow { padding: 12px 12px 13px; }
   .ftab { padding: 0 13px; font-size: 12.5px; }

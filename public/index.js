@@ -34,6 +34,8 @@
     const v = JSON.parse(localStorage.getItem(PREF) || localStorage.getItem(PREF_OLD) || "null");
     if (v) { delete v.fsite; pref = Object.assign(pref, v); }
   } catch (e) {}
+  /* 弹幕清单只存 data/danmaku.json，清掉旧版本留在本地的副本 */
+  delete pref.danmaku;
   function save() { try { localStorage.setItem(PREF, JSON.stringify(pref)); } catch (e) {} }
 
   const t0 = new Date();
@@ -285,6 +287,19 @@
     }
     gsel.root.dataset.state = "ready";
     toast("LPL 赛事获取成功：" + list.length + " 场", "ok");
+  }
+
+  /* 赛程只在首次进入 LOL比赛 视图时请求，其它视图不加载 */
+  let gamesStarted = false;
+  function ensureGames() {
+    if (gamesStarted) return;
+    gamesStarted = true;
+    setGameSelState("正在请求数据…", "loading");
+    /* 兜底：加载函数内未捕获的异常也给出失败提示 */
+    loadGames().catch((e) => {
+      source.state = "fail"; renderHeader(); setGameSelState("赛事请求失败", "fail");
+      toast("LPL 赛事获取失败：" + ((e && e.message) || "未知错误"), "err");
+    });
   }
 
   function statusText(s) {
@@ -583,8 +598,8 @@
     fitTimer = setTimeout(fitCells, 120);
   });
 
-  /* ---------- 顶部导航：首页 / 影视 / 音乐 视图切换 ---------- */
-  const VIEWS = ["home", "film", "music"];
+  /* ---------- 顶部导航：LOL比赛 / 影视 / 音乐 / 弹幕 视图切换 ---------- */
+  const VIEWS = ["home", "film", "music", "danmaku"];
   let curView = VIEWS.indexOf(pref.view) >= 0 ? pref.view : "home";
   const fnavItems = Array.prototype.slice.call(document.querySelectorAll(".fnav-item"));
   function placeNavInd() {
@@ -601,8 +616,9 @@
     $("#viewHome").hidden = curView !== "home";
     $("#viewFilm").hidden = curView !== "film";
     $("#viewMusic").hidden = curView !== "music";
-    /* 回到首页时格子高度可能变过，重算能放几行 */
-    if (curView === "home") fitCells();
+    $("#viewDanmaku").hidden = curView !== "danmaku";
+    /* 回到首页时格子高度可能变过，重算能放几行；赛程也等进首页才拉 */
+    if (curView === "home") { fitCells(); ensureGames(); }
     /* 影视页首次进入才拉数据，避免一打开就发 4 个请求 */
     if (curView === "film") ensureFilm();
     if (!skipSave) { pref.view = curView; save(); }
@@ -1061,14 +1077,282 @@
     loadFilmRow(cat);
   });
 
-  /* ---------- 初始化 ---------- */
-  applyAccent(); renderWeekdays(); applyMini(); render();
-  switchView(curView, true);
-  setGameSelState("正在请求数据…", "loading");
-  /* 兜底：加载函数内未捕获的异常也给出失败提示 */
-  loadGames().catch((e) => {
-    source.state = "fail"; renderHeader(); setGameSelState("赛事请求失败", "fail");
-    toast("LPL 赛事获取失败：" + ((e && e.message) || "未知错误"), "err");
+  /* ---------- 弹幕视图：清单只存 public/data/danmaku.json，读写都走 /danmaku ---------- */
+  const dmName = $("#dmName"), dmUrl = $("#dmUrl"), dmList = $("#dmList"), dmEmpty = $("#dmEmpty");
+  const DM_API = "/danmaku";
+
+  /* 内存中的当前清单：唯一来源是 JSON 文件，不写入 localStorage */
+  let dmItems = [];
+  const ICON_TEST =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12L16 12h5"/></svg>';
+  const ICON_COPY =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11.5" height="11.5" rx="2.6"/><path d="M15 5.8a2.3 2.3 0 00-2.3-2.3H6a2.3 2.3 0 00-2.3 2.3v6.7A2.3 2.3 0 006 14.8"/></svg>';
+  const ICON_X =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
+
+  function renderDanmaku() {
+    dmList.innerHTML = dmItems.map((it, i) => {
+      /* it.ok：true 绿点 / false 红点 / 缺省灰点（还没测过） */
+      const dot = it.ok === true ? " ok" : (it.ok === false ? " bad" : "");
+      return '<div class="dblock" data-i="' + i + '">' +
+        '<button class="ddel" type="button" title="删除">' + ICON_X + "</button>" +
+        '<span class="dname" title="' + esc((it && it.url) || "") + '">' + esc((it && it.name) || "") + "</span>" +
+        '<span class="dops">' +
+        '<button class="dico dtest" type="button" title="测试可用性">' + ICON_TEST + "</button>" +
+        '<button class="dico dcopy" type="button" title="复制 API 链接">' + ICON_COPY + "</button>" +
+        '<i class="ddot' + dot + '"></i>' +
+        "</span></div>";
+    }).join("");
+    dmEmpty.hidden = dmItems.length > 0;
+  }
+
+  /* 只改指示灯，避免整表重绘 */
+  function paintDot(i, ok) {
+    const dot = dmList.querySelector('.dblock[data-i="' + i + '"] .ddot');
+    if (dot) dot.className = "ddot" + (ok ? " ok" : " bad");
+  }
+
+  /* 统一解析 { ok, items } 响应，失败返回 null */
+  function itemsOf(j) {
+    return j && j.ok && Array.isArray(j.items) ? j.items : null;
+  }
+
+  async function fetchDanmaku() {
+    try {
+      const res = await fetch(DM_API, { headers: { accept: "application/json" }, cache: "no-store" });
+      if (!res.ok) return null;
+      return itemsOf(await res.json());
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function postDanmaku(item) {
+    try {
+      const res = await fetch(DM_API, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify(item)
+      });
+      if (!res.ok) return null;
+      return itemsOf(await res.json());
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* 把探测结果回写 JSON：单条测试传一项，全部测试传整批 */
+  async function patchDanmakuOk(updates) {
+    if (!updates || !updates.length) return null;
+    try {
+      const res = await fetch(DM_API, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ items: updates })
+      });
+      if (!res.ok) return null;
+      return itemsOf(await res.json());
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* 删除：按 name + url 匹配 JSON 文件里的记录 */
+  async function removeDanmaku(item) {
+    try {
+      const q = new URLSearchParams({ name: item.name || "", url: item.url || "" });
+      const res = await fetch(DM_API + "?" + q.toString(), {
+        method: "DELETE",
+        headers: { accept: "application/json" }
+      });
+      if (!res.ok) return null;
+      return itemsOf(await res.json());
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* 只读 JSON：拿不到接口就是空列表，不会去翻 localStorage */
+  async function loadDanmaku() {
+    dmItems = (await fetchDanmaku()) || [];
+    renderDanmaku();
+  }
+
+  /* 探测链接是否可访问：超时、网络失败、HTTP 非 2xx 都算不可访问。
+     跨域接口读不到响应体（CORS 拦截），用 no-cors 再试一次，
+     只要拿到 opaque 响应就说明地址是通的 */
+  async function probeApi(url) {
+    const ms = 6000;
+    async function req(opt) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), ms);
+      try {
+        return await fetch(url, Object.assign({ cache: "no-store", signal: ctl.signal }, opt));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    try {
+      return !!(await req({})).ok;
+    } catch (e) {
+      try { await req({ mode: "no-cors" }); return true; }
+      catch (e2) { return false; }
+    }
+  }
+
+  const dmAdd = $("#dmAdd"), dmTestAll = $("#dmTestAll");
+  let dmBusy = false;
+  let dmAllBusy = false;
+
+  /* 剪贴板：优先 navigator.clipboard，非安全上下文退回 textarea + execCommand */
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "-1000px";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const done = document.execCommand("copy");
+        ta.remove();
+        return done;
+      } catch (e2) {
+        return false;
+      }
+    }
+  }
+
+  /* 单条测试：只测这一条，结果体现在指示灯 */
+  async function testOne(i) {
+    const it = dmItems[i];
+    if (!it) return;
+    const btn = dmList.querySelector('.dblock[data-i="' + i + '"] .dtest');
+    if (btn) btn.disabled = true;
+    const ok = await probeApi(it.url);
+    it.ok = ok;
+    if (btn) btn.disabled = false;
+    paintDot(i, ok);
+    /* 结果同步进 JSON，下次打开直接显示同一灯色 */
+    patchDanmakuOk([{ name: it.name, url: it.url, ok: ok }]);
+    toast((ok ? "可用：" : "无法访问：") + (it.name || it.url), ok ? "ok" : "err");
+  }
+
+  async function copyOne(it) {
+    const ok = await copyText(it.url);
+    toast(ok ? "已复制链接：" + (it.name || "") : "复制失败，请手动复制", ok ? "ok" : "err");
+  }
+
+  /* 删除一条：写不进去就保持原样，不做本地假删除 */
+  async function deleteOne(i) {
+    const it = dmItems[i];
+    if (!it) return;
+    const saved = await removeDanmaku(it);
+    if (!saved) { toast("删除失败：无法写入 danmaku.json", "err"); return; }
+    dmItems = saved;
+    renderDanmaku();
+    toast("已删除：" + (it.name || it.url), "ok");
+  }
+
+  /* 全部测试：并发 3 条，边测边点灯，结束后汇总 */
+  async function testAllDanmaku() {
+    if (dmAllBusy) return;
+    const items = dmItems;
+    if (!items.length) { toast("还没有弹幕源", "err"); return; }
+
+    dmAllBusy = true;
+    dmTestAll.disabled = true;
+    const label = dmTestAll.querySelector("span");
+    if (label) label.textContent = "测试中…";
+
+    let ok = 0, cursor = 0;
+    const updates = [];
+    async function worker() {
+      while (cursor < items.length) {
+        const i = cursor++;
+        const it = items[i];
+        const r = await probeApi(it.url);
+        it.ok = r;
+        updates.push({ name: it.name, url: it.url, ok: r });
+        if (r) ok++;
+        paintDot(i, r);
+      }
+    }
+    try {
+      await Promise.all([worker(), worker(), worker()]);
+      /* 整批回写 JSON，只写一次文件 */
+      await patchDanmakuOk(updates);
+    } finally {
+      dmAllBusy = false;
+      dmTestAll.disabled = false;
+      if (label) label.textContent = "全部测试";
+    }
+    toast(ok + " / " + items.length + " 个弹幕源可访问", ok === items.length ? "ok" : "err");
+  }
+
+  async function addDanmaku() {
+    if (dmBusy) return;
+    const name = dmName.value.trim();
+    const url = dmUrl.value.trim();
+    if (!name) { toast("请填写名称", "err"); dmName.focus(); return; }
+    if (!url) { toast("请填写弹幕 API 链接", "err"); dmUrl.focus(); return; }
+
+    /* 探测期间锁定按钮，避免重复提交 */
+    dmBusy = true;
+    dmAdd.disabled = true;
+    dmAdd.textContent = "检测中…";
+    let reachable = false;
+    try { reachable = await probeApi(url); }
+    finally {
+      dmBusy = false;
+      dmAdd.disabled = false;
+      dmAdd.textContent = "添加";
+    }
+
+    /* 接口不可访问也照样写进 JSON，只是给出警告；ok 一并记录，下次打开直接显示灯色 */
+    const saved = await postDanmaku({ name: name, url: url, ok: reachable });
+    if (!saved) {
+      /* 只认 JSON：写不进去就不假装添加成功 */
+      toast("保存失败：无法写入 danmaku.json（需用 node server.js 启动）", "err");
+      return;
+    }
+
+    dmItems = saved;
+    dmName.value = ""; dmUrl.value = "";
+    renderDanmaku();
+    dmName.focus();
+
+    if (reachable) toast("已添加弹幕源：" + name, "ok");
+    else toast("无法访问该弹幕 API：" + url, "err");
+  }
+
+  dmAdd.addEventListener("click", addDanmaku);
+  dmTestAll.addEventListener("click", testAllDanmaku);
+  [dmName, dmUrl].forEach((el) => {
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addDanmaku(); } });
   });
+
+  /* 方块内的测试 / 复制按钮：事件委托，列表重绘后无需重新绑定 */
+  dmList.addEventListener("click", (e) => {
+    const block = e.target.closest(".dblock");
+    if (!block) return;
+    const i = Number(block.dataset.i);
+    const it = dmItems[i];
+    if (!it) return;
+    if (e.target.closest(".ddel")) deleteOne(i);
+    else if (e.target.closest(".dtest")) testOne(i);
+    else if (e.target.closest(".dcopy")) copyOne(it);
+  });
+
+  /* ---------- 初始化 ---------- */
+  applyAccent(); renderWeekdays(); applyMini(); render(); renderDanmaku();
+  /* 首页 / 影视 / 音乐 / 弹幕：只有停在 LOL比赛 视图才拉赛程，由 switchView 触发 */
+  switchView(curView, true);
   loadMusic();
+  loadDanmaku();
 })();

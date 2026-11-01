@@ -20,7 +20,7 @@ const UPSTREAM_HEADERS = {
 };
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Max-Age": "86400"
 };
 
@@ -40,7 +40,7 @@ const MIME = {
 };
 
 function json(res, obj, status) {
-  res.writeHead(status, Object.assign({ "content-type": "application/json; charset=utf-8" }, CORS));
+  res.writeHead(status || 200, Object.assign({ "content-type": "application/json; charset=utf-8" }, CORS));
   res.end(JSON.stringify(obj));
 }
 
@@ -70,6 +70,131 @@ async function handleApi(req, res, url) {
     "cache-control": "public, max-age=60"
   }, CORS));
   res.end(body);
+}
+
+/* 弹幕源清单：读写 public/data/danmaku.json（部署到纯静态/Worker 时只能读） */
+const DATA_DIR = path.join(PUBLIC_DIR, "data");
+const DM_FILE = path.join(DATA_DIR, "danmaku.json");
+const DM_LIMIT = 200;
+
+function readDanmakuFile() {
+  try {
+    /* 去掉 BOM：手工用编辑器/记事本存过的文件带 BOM，JSON.parse 会直接抛错，
+       失败后按空列表处理会让下一次写入把旧数据全冲掉 */
+    const j = JSON.parse(fs.readFileSync(DM_FILE, "utf8").replace(/^\uFEFF/, ""));
+    const items = Array.isArray(j) ? j : (j && Array.isArray(j.items) ? j.items : []);
+    return items
+      .filter((it) => it && it.name)
+      .map((it) => {
+        const rec = { name: String(it.name), url: String(it.url || "") };
+        /* ok 记录上次探测的可用性，未测过则不带该字段 */
+        if (typeof it.ok === "boolean") rec.ok = it.ok;
+        return rec;
+      });
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeDanmakuFile(items) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(DM_FILE, JSON.stringify({ items: items }, null, 2) + "\n", "utf8");
+}
+
+/* 读取请求体，超过 limit 字节直接断开，避免大包占内存 */
+function readBody(req, limit) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+      if (raw.length > limit) { reject(new Error("body too large")); req.destroy(); }
+    });
+    req.on("end", () => resolve(raw));
+    req.on("error", reject);
+  });
+}
+
+async function handleDanmaku(req, res, url) {
+  if (req.method === "OPTIONS") { res.writeHead(204, CORS); return res.end(); }
+
+  if (req.method === "GET") {
+    res.writeHead(200, Object.assign({
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store"
+    }, CORS));
+    return res.end(JSON.stringify({ ok: true, items: readDanmakuFile() }));
+  }
+
+  /* 删除：按 name + url 精确匹配，找不到就原样返回，不算失败 */
+  if (req.method === "DELETE") {
+    const name = (url.searchParams.get("name") || "").trim();
+    const target = (url.searchParams.get("url") || "").trim();
+    if (!name || !target) return json(res, { ok: false, error: "name and url required" }, 400);
+
+    const items = readDanmakuFile();
+    const idx = items.findIndex((it) => it.name === name && it.url === target);
+    if (idx >= 0) {
+      items.splice(idx, 1);
+      try {
+        writeDanmakuFile(items);
+      } catch (e) {
+        return json(res, { ok: false, error: "write failed: " + ((e && e.message) || "unknown") }, 500);
+      }
+    }
+    return json(res, { ok: true, items: items });
+  }
+
+  /* POST / PATCH 都要 JSON body */
+  if (req.method !== "POST" && req.method !== "PATCH") {
+    return json(res, { ok: false, error: "method not allowed" }, 405);
+  }
+
+  let body;
+  try {
+    body = JSON.parse(await readBody(req, 16384));
+  } catch (e) {
+    return json(res, { ok: false, error: "invalid json" }, 400);
+  }
+
+  /* PATCH /danmaku { items: [{ name, url, ok }] }：回写探测结果，供下次打开直接显示灯色 */
+  if (req.method === "PATCH") {
+    const updates = Array.isArray(body && body.items) ? body.items : [];
+    if (!updates.length) return json(res, { ok: false, error: "items required" }, 400);
+
+    const items = readDanmakuFile();
+    let changed = 0;
+    updates.forEach((u) => {
+      if (!u || typeof u.ok !== "boolean") return;
+      const rec = items.find((it) => it.name === String(u.name || "").trim() && it.url === String(u.url || "").trim());
+      if (rec && rec.ok !== u.ok) { rec.ok = u.ok; changed++; }
+    });
+
+    if (changed) {
+      try {
+        writeDanmakuFile(items);
+      } catch (e) {
+        return json(res, { ok: false, error: "write failed: " + ((e && e.message) || "unknown") }, 500);
+      }
+    }
+    return json(res, { ok: true, items: items });
+  }
+
+  const name = String((body && body.name) || "").trim().slice(0, 60);
+  const link = String((body && body.url) || "").trim().slice(0, 500);
+  if (!name || !link) return json(res, { ok: false, error: "name and url required" }, 400);
+
+  const items = readDanmakuFile();
+  if (items.length >= DM_LIMIT) return json(res, { ok: false, error: "too many items" }, 400);
+  const rec = { name: name, url: link };
+  if (typeof (body && body.ok) === "boolean") rec.ok = body.ok;
+  items.push(rec);
+
+  try {
+    writeDanmakuFile(items);
+  } catch (e) {
+    return json(res, { ok: false, error: "write failed: " + ((e && e.message) || "unknown") }, 500);
+  }
+  return json(res, { ok: true, items: items });
 }
 
 /* 影视海报聚合：与 worker.js 共用 poster.mjs（ESM，这里动态 import） */
@@ -120,6 +245,8 @@ const server = http.createServer((req, res) => {
     handleApi(req, res, url).catch((e) => json(res, { error: (e && e.message) || "unknown" }, 500));
   } else if (url.pathname === "/poster") {
     handlePoster(res, url);
+  } else if (url.pathname === "/danmaku") {
+    handleDanmaku(req, res, url).catch((e) => json(res, { ok: false, error: (e && e.message) || "unknown" }, 500));
   } else {
     serveStatic(res, url.pathname);
   }

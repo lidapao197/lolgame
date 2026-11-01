@@ -13,7 +13,7 @@ const UPSTREAM_HEADERS = {
 };
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Max-Age": "86400"
 };
 
@@ -38,6 +38,25 @@ export default {
         headers: Object.assign({
           "content-type": "application/json; charset=utf-8",
           "cache-control": "public, max-age=300"
+        }, CORS)
+      });
+    }
+
+    /* 弹幕源清单：Worker 无文件系统，只读 public/data/danmaku.json；
+       写入仅本地 node server.js 支持，前端会退化为本地缓存 */
+    if (url.pathname === "/danmaku") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+      if (request.method !== "GET") return fail("read-only: 请用本地 node server.js 写入", 501);
+      let items = [];
+      try {
+        const r = await env.ASSETS.fetch(new URL("/data/danmaku.json", url).toString());
+        const j = await r.json();
+        items = Array.isArray(j) ? j : (j && Array.isArray(j.items) ? j.items : []);
+      } catch (e) { /* 文件缺失按空列表处理 */ }
+      return new Response(JSON.stringify({ ok: true, items: items }), {
+        headers: Object.assign({
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store"
         }, CORS)
       });
     }
